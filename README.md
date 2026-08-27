@@ -84,6 +84,19 @@ open CodexPad/CodexPad.xcodeproj
 
 详细步骤见 [BUILDING.md](BUILDING.md)。
 
+## 完整文档
+
+仓库中的实现、边界和验收状态均有独立说明：
+
+- [文档总览](docs/README.md)
+- [从克隆到物理 iPad 首次运行](docs/GETTING_STARTED.md)
+- [完整功能状态与已知问题](docs/FEATURE_STATUS.md)
+- [SwiftUI、WebView、AppHost、Rust、SQLite、Keychain、MCP 与 iCloud 架构](docs/ARCHITECTURE.md)
+- [构建、签名、测试、发布、手动更新和回滚](docs/BUILD_RELEASE_TESTING.md)
+- [安全、隐私、凭据和公开仓库排除项](docs/SECURITY_PRIVACY.md)
+
+请特别阅读功能状态文档：仓库会明确区分“已有源码”“自动化测试通过”和“物理 iPad 端到端验证”，不会用其中一层代替完整验收。
+
 ## iCloud Drive 使用方式
 
 1. Mac：把代码目录移动到 iCloud Drive，例如 `iCloud Drive/Projects/MyProject`。
