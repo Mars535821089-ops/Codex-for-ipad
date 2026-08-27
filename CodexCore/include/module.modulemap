@@ -1,0 +1,4 @@
+module CCodexCore {
+  header "codex_core.h"
+  export *
+}

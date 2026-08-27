@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "bug": "API-key login submission failed because the signed iPad app omitted its allowed Keychain access group.",
+  "expected": "Submitting a non-empty API key commits it to Keychain, enters the signed-in surface, and restores that state after cold launch.",
+  "sourceEvidence": {
+    "oldSignedAppKeychainAccessGroups": [],
+    "provisioningProfileAllowsKeychainGroup": true,
+    "currentFixRequiresExactApplicationIdentifierGroup": true
+  },
+  "snapshotBoundary": "Pre-submit released API-key form on the dedicated M5 iPad simulator; no credential value is stored in this fixture."
+}

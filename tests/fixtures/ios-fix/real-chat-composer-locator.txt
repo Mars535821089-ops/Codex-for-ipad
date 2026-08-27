@@ -1,0 +1,1 @@
+Observed on the physical iPad: New chat renders a TextView, but the UI test rejects it because the localized label says ChatGPT instead of Codex.

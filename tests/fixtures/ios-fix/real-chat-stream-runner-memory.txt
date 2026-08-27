@@ -1,0 +1,1 @@
+The physical-device chat request started successfully, but the UI Test Runner was killed while repeatedly traversing the full WKWebView accessibility tree; wait on a native stream-state anchor and inspect the released response tree only after completion.

@@ -1,0 +1,6 @@
+:root {
+  --background: #ffffff;
+  --foreground: #0d0d0d;
+  --sidebar-width: 260px;
+}
+@font-face { font-family: "Codex Sans"; src: url("./codex.woff2"); }

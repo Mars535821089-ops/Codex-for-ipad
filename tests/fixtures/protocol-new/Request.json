@@ -1,0 +1,30 @@
+{
+  "type": "object",
+  "required": [
+    "threadId",
+    "mode",
+    "workspaceId"
+  ],
+  "properties": {
+    "threadId": {
+      "type": "string"
+    },
+    "mode": {
+      "enum": [
+        "read"
+      ]
+    },
+    "workspaceId": {
+      "type": "string"
+    },
+    "limit": {
+      "type": "integer"
+    },
+    "cursor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

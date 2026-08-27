@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "fixture": "real-chat-composer-locator",
+  "device": {
+    "family": "iPad Pro 12.9-inch (5th generation)",
+    "reality": "physical",
+    "orientation": "landscape"
+  },
+  "routeAction": "tap New chat",
+  "observedComposer": {
+    "elementType": "TextView",
+    "labels": [
+      "给 ChatGPT 发消息",
+      "使用 ChatGPT Work"
+    ],
+    "exists": true
+  },
+  "failingLocator": {
+    "requiredTerms": [
+      "Do anything",
+      "做任何事",
+      "随心输入",
+      "Codex"
+    ],
+    "matched": false
+  },
+  "expected": "The physical-iPad real-chat test locates the visible composer independent of the current localized ChatGPT placeholder."
+}

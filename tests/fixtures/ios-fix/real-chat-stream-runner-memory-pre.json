@@ -1,0 +1,25 @@
+{
+  "bug": "physical real-chat UI runner exhausts memory while polling the released WKWebView response tree",
+  "device": "physical-ipad",
+  "sourceEvidence": {
+    "buildLog": "artifacts/xcodebuild-physical-real-chat-conversation-routing-fix-20260821-203712.log",
+    "resultBundle": "artifacts/xcresult-physical-real-chat-conversation-routing-fix-20260821-203712.xcresult",
+    "runnerTermination": "Test crashed with signal kill",
+    "applicationDiagnostic": "sandbox_extension_consume failed: 12 (Cannot allocate memory)"
+  },
+  "observedBehavior": {
+    "requestReachedConversationPrepare": true,
+    "requestReachedConversationStream": true,
+    "responseMarkerPollingSurface": "WKWebView accessibility subtree",
+    "responseMarkerPollingTimeoutSeconds": 180
+  },
+  "expectedBehavior": {
+    "streamPollingSurface": "1x1 native accessibility anchor",
+    "terminalStates": [
+      "complete",
+      "error",
+      "cancelled"
+    ],
+    "releasedResponseTreeQueriesAfterCompletion": 1
+  }
+}

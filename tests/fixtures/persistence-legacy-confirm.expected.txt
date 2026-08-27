@@ -1,0 +1,2 @@
+snapshot-before-confirm=true
+snapshot-after-confirm=false

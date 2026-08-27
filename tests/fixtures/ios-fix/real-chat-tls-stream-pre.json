@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "bug": "The physical-iPad ChatGPT conversation stream fails before response headers with NSURLErrorDomain -1200.",
+  "device": {
+    "family": "iPad Pro 12.9-inch (5th generation)",
+    "reality": "physical"
+  },
+  "sourceEvidence": {
+    "buildLog": "artifacts/xcodebuild-physical-real-chat-native-stream-anchor-20260821-211258.log",
+    "resultBundle": "artifacts/xcresult-physical-real-chat-native-stream-anchor-20260821-211258.xcresult",
+    "finalFrame": "artifacts/real-chat-final-frame-20260821.png",
+    "streamState": "error",
+    "transportStage": "stream_headers",
+    "endpoint": "chatgpt.com/backend-api/f/conversation",
+    "errorDomain": "NSURLErrorDomain",
+    "errorCode": -1200
+  },
+  "expectedBehavior": {
+    "sessionPolicy": "ordinary and streaming product requests share the system proxy, VPN, cookie store, and bounded connection pool",
+    "preHeaderTLSRetryCount": 1,
+    "startedStreamRetryCount": 0,
+    "tlsValidation": "system-default"
+  },
+  "privacy": "No account identifier, credential, header, query, request body, or response body is stored in this fixture."
+}

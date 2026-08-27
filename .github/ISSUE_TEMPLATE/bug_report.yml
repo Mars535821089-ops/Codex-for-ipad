@@ -1,0 +1,33 @@
+name: Bug report
+description: Report a reproducible Codex for ipad problem
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: "Remove credentials, private project content, Team IDs and device UDIDs before submitting."
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: input
+    id: ipad
+    attributes:
+      label: iPad model and iPadOS version
+  - type: input
+    id: build
+    attributes:
+      label: Codex for ipad build
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted logs
+      render: shell

@@ -1,0 +1,11 @@
+{
+  "name": "codex-for-ipad-mcp-packages",
+  "private": true,
+  "version": "1.0.0",
+  "engines": {
+    "node": ">=18.20.4"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server-filesystem": "2026.7.10"
+  }
+}

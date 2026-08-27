@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "required": [
+    "threadId",
+    "mode"
+  ],
+  "properties": {
+    "threadId": {
+      "type": "string"
+    },
+    "mode": {
+      "enum": [
+        "read",
+        "write"
+      ]
+    },
+    "limit": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  }
+}
