@@ -251,9 +251,8 @@ class GenerateCodexPadProjectTests(unittest.TestCase):
         framework = runtime_root / "Python.xcframework"
         (framework / "build").mkdir(parents=True)
         real_utils = (
-            Path(__file__).resolve().parents[1]
-            / "CodexPad/Vendor/python_apple/Python.xcframework/"
-            "build/utils.sh"
+            Path(__file__).resolve().parent
+            / "fixtures/python-apple-utils.sh"
         )
         (framework / "build/utils.sh").write_bytes(
             real_utils.read_bytes()

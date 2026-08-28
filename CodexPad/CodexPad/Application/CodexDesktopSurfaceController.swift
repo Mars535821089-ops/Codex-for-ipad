@@ -461,6 +461,21 @@
                 CodexDesktopLastActiveLocalThreadStore(
                     userDefaults: userDefaults
                 )
+            if ProcessInfo.processInfo.environment[
+                "XCTestConfigurationFilePath"
+            ] != nil,
+               ProcessInfo.processInfo.environment[
+                   "CODEXPAD_UI_TEST_CLEAN_VALIDATION_FIXTURES"
+               ] == "1"
+            {
+                _ = localProjectsStateStore.removeProjects(
+                    namedExactly: "Parity Git Workspace"
+                )
+                selectedProjectStore.setSelectedWorkspaceID(nil)
+                lastActiveLocalThreadStore.clearDurableThreadID(
+                    source: "validation-fixture-cleanup"
+                )
+            }
             if let initialWorkspaceID =
                 selectedProjectStore.resolveInitialSelection(
                     preferredWorkspaceID:

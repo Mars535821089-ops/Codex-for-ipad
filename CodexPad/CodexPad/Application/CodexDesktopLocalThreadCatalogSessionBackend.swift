@@ -130,6 +130,7 @@ public final class CodexDesktopLocalThreadCatalogSessionBackend:
     private let sessionStore: CodexSessionStore
     private let syncPageLimit: UInt32
     private var entriesByThreadID: [String: Entry] = [:]
+    private var knownArchivedThreadIDs: Set<String> = []
     private var revision: Int64 = 0
     private var isComplete = false
     private var populationEnabled = false
@@ -390,8 +391,21 @@ public final class CodexDesktopLocalThreadCatalogSessionBackend:
         let changedEntries = scannedEntries.values.filter {
             entriesByThreadID[$0.threadID] != $0
         }
-        let removedThreadIDs = entriesByThreadID.keys
-            .filter { scannedEntries[$0] == nil }
+        let persistedArchivedThreadIDs = Set(
+            sessionStore.state.archivedThreadIDs.map {
+                $0.uuidString.lowercased()
+            }
+        )
+        let removedThreadIDs = Set(
+            entriesByThreadID.keys.filter {
+                scannedEntries[$0] == nil
+            }
+        ).union(
+            persistedArchivedThreadIDs.subtracting(
+                knownArchivedThreadIDs
+            )
+        )
+        knownArchivedThreadIDs = persistedArchivedThreadIDs
         let completionChanged = !isComplete
         guard !changedEntries.isEmpty
                 || !removedThreadIDs.isEmpty
@@ -405,7 +419,7 @@ public final class CodexDesktopLocalThreadCatalogSessionBackend:
         try bumpRevision()
         await emitCatalogMutation(
             changedEntries: changedEntries,
-            removedThreadIDs: removedThreadIDs
+            removedThreadIDs: Array(removedThreadIDs)
         )
     }
 

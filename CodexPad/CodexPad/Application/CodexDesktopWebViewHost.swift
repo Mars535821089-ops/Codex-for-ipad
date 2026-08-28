@@ -484,6 +484,12 @@ public final class CodexDesktopLastActiveLocalThreadStore {
         )
     }
 
+    public func clearDurableThreadID(
+        source: String = "explicit-clear"
+    ) {
+        clear(source: source, pathKind: "cleared")
+    }
+
     public func restoredInitialRoute(
         threadExists: (String) -> Bool
     ) -> String? {

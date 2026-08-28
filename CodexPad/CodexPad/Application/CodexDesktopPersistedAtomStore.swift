@@ -608,6 +608,33 @@ public final class CodexDesktopLocalProjectsStateStore:
         }
     }
 
+    /// Removes every project whose released sidebar label exactly matches
+    /// `name`. This is intentionally exact so fixture cleanup never touches a
+    /// similarly named user project.
+    @discardableResult
+    public func removeProjects(
+        namedExactly name: String
+    ) -> Int {
+        withLock {
+            let projectIDs = state.projects.compactMap {
+                projectID, metadata in
+                metadata.name == name ? projectID : nil
+            }
+            guard !projectIDs.isEmpty else {
+                return 0
+            }
+            let removedIDs = Set(projectIDs)
+            for projectID in removedIDs {
+                state.projects.removeValue(forKey: projectID)
+                state.removedProjectIDs.insert(projectID)
+                state.explicitProjectIDs.remove(projectID)
+            }
+            state.order.removeAll { removedIDs.contains($0) }
+            persistLocked()
+            return removedIDs.count
+        }
+    }
+
     /// Updates existing metadata or records caller-provided metadata without
     /// implicitly inserting a missing project into sidebar order.
     @discardableResult

@@ -593,6 +593,62 @@ func localProjectsStateStoreAppliesRenameRemoveAndUpsertNoOpRules() {
 }
 
 @Test
+func localProjectsStateStoreRemovesOnlyExactNamedProjectsAndPersists() {
+    let suiteName =
+        "CodexDesktopLocalProjectsExactNameRemovalTests-\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer {
+        defaults.removePersistentDomain(forName: suiteName)
+    }
+    let store = CodexDesktopLocalProjectsStateStore(
+        userDefaults: defaults,
+        nowMilliseconds: { 1_754_425_000_000 }
+    )
+    _ = store.createProject(
+        projectID: "fixture-one",
+        name: "Parity Git Workspace",
+        rootPaths: ["/fixture-one"]
+    )
+    _ = store.createProject(
+        projectID: "fixture-two",
+        name: "Parity Git Workspace",
+        rootPaths: ["/fixture-two"]
+    )
+    _ = store.createProject(
+        projectID: "user-project",
+        name: "Parity Git Workspace Personal",
+        rootPaths: ["/user"]
+    )
+
+    #expect(
+        store.removeProjects(namedExactly: "Parity Git Workspace") == 2
+    )
+    #expect(store.projectsInOrder.map(\.id) == ["user-project"])
+    #expect(
+        store.removeProjects(namedExactly: "Parity Git Workspace") == 0
+    )
+
+    let relaunched = CodexDesktopLocalProjectsStateStore(
+        userDefaults: defaults
+    )
+    #expect(relaunched.projectsInOrder.map(\.id) == ["user-project"])
+    #expect(
+        relaunched.synchronize(
+            workspaces: [],
+            rootPath: { _ in nil }
+        )["local-projects"] == .object([
+            "user-project": .object([
+                "id": .string("user-project"),
+                "name": .string("Parity Git Workspace Personal"),
+                "rootPaths": .array([.string("/user")]),
+                "createdAt": .integer(1_754_425_000_000),
+                "updatedAt": .integer(1_754_425_000_000),
+            ])
+        ])
+    )
+}
+
+@Test
 func localProjectsStateStorePreservesExplicitMissingUpsertsAcrossSynchronization() {
     let suiteName =
         "CodexDesktopLocalProjectsExplicitUpsertTests-\(UUID().uuidString)"

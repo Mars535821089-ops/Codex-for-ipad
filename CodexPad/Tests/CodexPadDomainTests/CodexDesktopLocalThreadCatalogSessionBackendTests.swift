@@ -659,6 +659,80 @@ func desktopLocalThreadCatalogSessionBackendRunsStartupPopulationLifecycle()
 }
 
 @MainActor
+@Test
+func desktopLocalThreadCatalogStartupPurgesPersistedArchivedRendererEntries()
+    async throws
+{
+    let archivedThreadID = UUID(
+        uuidString: "01A046EB-6B60-7E23-B31F-9931CE222197"
+    )!
+    let transport = LocalThreadCatalogSessionTransport()
+    transport.replies = [
+        .list(.init(
+            data: [],
+            nextCursor: nil,
+            backwardsCursor: nil
+        )),
+        .list(.init(
+            data: [],
+            nextCursor: nil,
+            backwardsCursor: nil
+        )),
+    ]
+    let store = CodexSessionStore(
+        state: CodexSessionState(
+            archivedThreadIDs: [archivedThreadID]
+        ),
+        transport: transport
+    )
+    let backend = CodexDesktopLocalThreadCatalogSessionBackend(
+        sessionStore: store
+    )
+    let catalogEvents = SessionCatalogEventRecorder()
+    let token = await backend.subscribeCatalogEvents {
+        await catalogEvents.record($0)
+    }
+
+    try await backend.setPopulationEnabled(true, startup: "manual")
+    try await backend.requestSync(
+        hostIDs: ["local"],
+        priority: "immediate"
+    )
+    #expect(await catalogEvents.values == [
+        .object([
+            "type": .string("delta"),
+            "delta": .object([
+                "revision": .integer(1),
+                "changedHosts": .array([
+                    .object([
+                        "hostId": .string("local"),
+                        "isComplete": .bool(true),
+                    ]),
+                ]),
+                "removedHostIds": .array([]),
+                "changedEntries": .array([]),
+                "removedEntries": .array([
+                    .object([
+                        "hostId": .string("local"),
+                        "threadId": .string(
+                            archivedThreadID.uuidString.lowercased()
+                        ),
+                    ]),
+                ]),
+            ]),
+        ]),
+    ])
+
+    try await backend.requestSync(
+        hostIDs: ["local"],
+        priority: "immediate"
+    )
+    #expect(await catalogEvents.values.count == 1)
+
+    await token.cancel()
+}
+
+@MainActor
 private final class LocalThreadCatalogSessionTransport:
     CodexCoreTransport
 {

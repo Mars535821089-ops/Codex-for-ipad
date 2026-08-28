@@ -19,3 +19,7 @@ Python-Apple-support project using the pinned metadata in
 The vendored `CodexCore/vendor/codex-utils-stream-parser` component is
 licensed under Apache License 2.0. Its license text is retained beside the
 component.
+
+The test fixture `tests/fixtures/python-apple-utils.sh` is copied from the
+pinned BeeWare Python-Apple-support runtime solely to verify the public build
+contract. It remains covered by the upstream project's license.

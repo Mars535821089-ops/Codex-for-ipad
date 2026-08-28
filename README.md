@@ -21,6 +21,16 @@
 
 ---
 
+## 当前稳定版
+
+- **桌面兼容基线：** `26.814.41957`（build `6744`）
+- **目标：** arm64 iPhoneOS Release / M 系列物理 iPad
+- **验收：** 完整 parity、真实 Provider 响应、独立冷启动与验证数据清理均已通过
+- **模型：** 登录后跟随账号实际返回的官方远端目录，不以客户端硬编码数量为准
+- **升级：** 显式手动升级；后台自动下载和替换已关闭
+
+查看 [Release Acceptance](docs/RELEASE_ACCEPTANCE.md)、[Changelog](CHANGELOG.md) 与 [Roadmap](ROADMAP.md)。
+
 ## 这是什么
 
 Codex for ipad 是一个以**最新版桌面 Codex 的可见界面、交互、状态、流程和功能**为兼容标准构建的 iPadOS 项目。
@@ -85,7 +95,7 @@ Codex for ipad ──安全书签──────┘
 - 客户端版本与导入的桌面版本绑定，用于官方模型请求；
 - 远端目录经过可见性、API 支持和分页规则处理；
 - 本地 `models.json` 作为版本化 fallback，并生成对应 Swift catalog；
-- 当前真机验收目录为 **7 个可见模型**：5.6 Sol、5.6 Terra、5.6 Luna、5.5、5.4、5.4 Mini、5.3 Codex Spark；
+- 真机验收确认目录由官方远端返回；客户端不会把某一次账号可见数量当作永久固定清单；
 - Provider/Adapter 分层保留扩展能力，不把产品逻辑锁定到某一家第三方模型。
 
 真实可见模型最终受账号权限、官方目录和服务端发布状态影响。
@@ -200,6 +210,9 @@ docs/       架构、功能状态、构建发布、安全与上手文档
 - [构建、签名、测试、发布、手动更新和回滚](docs/BUILD_RELEASE_TESTING.md)
 - [安全、隐私、凭据和公开仓库排除项](docs/SECURITY_PRIVACY.md)
 - [贡献指南](CONTRIBUTING.md)
+- [稳定版验收记录](docs/RELEASE_ACCEPTANCE.md)
+- [版本变更记录](CHANGELOG.md)
+- [持续兼容路线图](ROADMAP.md)
 
 ## 更新策略
 
@@ -207,12 +220,7 @@ Codex for ipad 采用**显式手动升级**：导入新的官方桌面包、重�
 
 ## 路线图
 
-- [ ] 扩大不同真实账号与 Provider 的流式响应、工具事件和错误恢复矩阵
-- [ ] 完成全部桌面快捷键在不同物理键盘布局上的真机验收
-- [ ] 加强 iCloud 冲突提示与项目同步状态可视化
-- [ ] 继续补齐 Settings、Projects、Files、MCP、Plugins/Skills 与 Remote Control 的逐项真机证据
-- [ ] 简化 Personal Team 首次签名与手动升级流程
-- [ ] 跟随桌面 Codex 更新持续维护界面、协议与行为一致性
+当前物理 iPad 产品基线已经完成闭环。后续不是补做“能否落地”，而是持续跟随桌面 Codex、官方模型目录和 iPadOS 更新维护兼容性，并扩大 Provider、MCP、键盘布局及 iCloud 冲突体验的验证范围。完整规划见 [ROADMAP.md](ROADMAP.md)。
 
 ## Star、Issue 与贡献
 

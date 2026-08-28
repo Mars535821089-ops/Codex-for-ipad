@@ -17,6 +17,7 @@ final class CodexPadParityCaptureUITests: XCTestCase {
             app.terminate()
         }
         app.launch()
+
         XCTAssertTrue(
             app.wait(for: .runningForeground, timeout: 15),
             "Shadowrocket did not enter the foreground on the physical iPad."
@@ -186,13 +187,7 @@ final class CodexPadParityCaptureUITests: XCTestCase {
             }
         }
 
-        let anotherWayButton = readySurface.buttons.matching(
-            NSPredicate(
-                format: "label == %@ OR label == %@",
-                "Sign in another way",
-                "使用其他方式登录"
-            )
-        ).firstMatch
+        let anotherWayButton = apiKeySignInEntry(in: readySurface)
         XCTAssertTrue(
             anotherWayButton.waitForExistence(timeout: 10),
             "The official renderer did not expose API-key sign-in."
@@ -221,13 +216,7 @@ final class CodexPadParityCaptureUITests: XCTestCase {
 
         apiKeyField.tap()
         apiKeyField.typeText("sk-codexpad-ui-test-placeholder")
-        let continueButton = readySurface.buttons.matching(
-            NSPredicate(
-                format: "label == %@ OR label == %@",
-                "Continue",
-                "继续"
-            )
-        ).firstMatch
+        let continueButton = apiKeySubmitButton(in: readySurface)
         XCTAssertTrue(
             continueButton.waitForExistence(timeout: 10),
             "The official API-key form did not expose Continue."
@@ -891,18 +880,43 @@ final class CodexPadParityCaptureUITests: XCTestCase {
         }
         app.launch()
 
+        // A clean physical-device install asks for local-network access on
+        // first launch. Accept the broadest available network option before
+        // waiting for the renderer so the real provider request is not
+        // blocked behind SpringBoard.
+        let springboard = XCUIApplication(
+            bundleIdentifier: "com.apple.springboard"
+        )
+        let fullNetworkAccess = springboard.alerts.buttons.matching(
+            NSPredicate(
+                format: "label == %@ OR label == %@ OR label == %@",
+                "无线局域网与蜂窝网络",
+                "WLAN & Cellular Data",
+                "Wireless LAN & Cellular Data"
+            )
+        ).firstMatch
+        if fullNetworkAccess.waitForExistence(timeout: 5) {
+            fullNetworkAccess.tap()
+        } else {
+            let localNetworkOnly = springboard.alerts.buttons.matching(
+                NSPredicate(
+                    format: "label == %@ OR label == %@ OR label == %@",
+                    "仅限无线局域网",
+                    "WLAN Only",
+                    "Wireless LAN Only"
+                )
+            ).firstMatch
+            if localNetworkOnly.waitForExistence(timeout: 2) {
+                localNetworkOnly.tap()
+            }
+        }
+
         let surface = app.webViews["CodexDesktopSurfaceReady"]
         XCTAssertTrue(
             surface.waitForExistence(timeout: releasedSurfaceBudget),
             "The focused shortcut test did not reach the released renderer."
         )
-        let anotherWay = surface.buttons.matching(
-            NSPredicate(
-                format: "label == %@ OR label == %@",
-                "Sign in another way",
-                "使用其他方式登录"
-            )
-        ).firstMatch
+        let anotherWay = apiKeySignInEntry(in: surface)
         XCTAssertTrue(anotherWay.waitForExistence(timeout: 15))
         anotherWay.tap()
 
@@ -916,13 +930,7 @@ final class CodexPadParityCaptureUITests: XCTestCase {
         XCTAssertTrue(apiKeyField.waitForExistence(timeout: 15))
         apiKeyField.tap()
         apiKeyField.typeText("sk-codexpad-ui-test-placeholder")
-        let continueButton = surface.buttons.matching(
-            NSPredicate(
-                format: "label == %@ OR label == %@",
-                "Continue",
-                "继续"
-            )
-        ).firstMatch
+        let continueButton = apiKeySubmitButton(in: surface)
         XCTAssertTrue(continueButton.waitForExistence(timeout: 10))
         continueButton.tap()
         XCTAssertTrue(
@@ -978,13 +986,7 @@ final class CodexPadParityCaptureUITests: XCTestCase {
             surface.waitForExistence(timeout: releasedSurfaceBudget),
             "The focused Terminal test did not reach the released renderer."
         )
-        let anotherWay = surface.buttons.matching(
-            NSPredicate(
-                format: "label == %@ OR label == %@",
-                "Sign in another way",
-                "使用其他方式登录"
-            )
-        ).firstMatch
+        let anotherWay = apiKeySignInEntry(in: surface)
         XCTAssertTrue(anotherWay.waitForExistence(timeout: 15))
         anotherWay.tap()
 
@@ -998,13 +1000,7 @@ final class CodexPadParityCaptureUITests: XCTestCase {
         XCTAssertTrue(apiKeyField.waitForExistence(timeout: 15))
         apiKeyField.tap()
         apiKeyField.typeText("sk-codexpad-ui-test-placeholder")
-        let continueButton = surface.buttons.matching(
-            NSPredicate(
-                format: "label == %@ OR label == %@",
-                "Continue",
-                "继续"
-            )
-        ).firstMatch
+        let continueButton = apiKeySubmitButton(in: surface)
         XCTAssertTrue(continueButton.waitForExistence(timeout: 10))
         continueButton.tap()
         XCTAssertTrue(
@@ -1069,9 +1065,7 @@ final class CodexPadParityCaptureUITests: XCTestCase {
 
         let surface = app.webViews["CodexDesktopSurfaceReady"]
         XCTAssertTrue(surface.waitForExistence(timeout: 45))
-        let anotherWay = surface.buttons.matching(
-            NSPredicate(format: "label == %@ OR label == %@", "Sign in another way", "使用其他方式登录")
-        ).firstMatch
+        let anotherWay = apiKeySignInEntry(in: surface)
         XCTAssertTrue(anotherWay.waitForExistence(timeout: 15))
         anotherWay.tap()
 
@@ -1081,9 +1075,7 @@ final class CodexPadParityCaptureUITests: XCTestCase {
         XCTAssertTrue(apiKeyField.waitForExistence(timeout: 15))
         apiKeyField.tap()
         apiKeyField.typeText("sk-codexpad-ui-test-placeholder")
-        let continueButton = surface.buttons.matching(
-            NSPredicate(format: "label == %@ OR label == %@", "Continue", "继续")
-        ).firstMatch
+        let continueButton = apiKeySubmitButton(in: surface)
         XCTAssertTrue(continueButton.waitForExistence(timeout: 10))
         continueButton.tap()
         XCTAssertTrue(authenticationSuccessMarker(in: surface).waitForExistence(timeout: 30))
@@ -1238,6 +1230,87 @@ final class CodexPadParityCaptureUITests: XCTestCase {
             "The physical iPad did not restore its saved ChatGPT account."
         )
 
+        let expected = "CODEXPAD_REAL_PROVIDER_OK"
+
+        @MainActor
+        func archiveValidationChatIfPresent(required: Bool) {
+            // WebKit exposes both the sidebar entry and the header title as
+            // buttons, not cells. Select the hittable copy inside the sidebar
+            // rather than long-pressing the header title.
+            let generatedTitleButtons = surface.buttons.matching(
+                NSPredicate(format: "label == %@", "Generate task title")
+            )
+            guard generatedTitleButtons.firstMatch.waitForExistence(
+                timeout: required ? 20 : 2
+            ), let row = generatedTitleButtons.allElementsBoundByIndex.first(
+                where: { $0.isHittable && $0.frame.minX < 280 }
+            ) else {
+                if required {
+                    XCTFail(
+                        "The completed provider validation chat was not identifiable for cleanup."
+                    )
+                }
+                return
+            }
+
+            let chatActions = surface.descendants(matching: .any).matching(
+                NSPredicate(
+                    format: "label == %@ OR label == %@",
+                    "Chat actions",
+                    "聊天操作"
+                )
+            ).firstMatch
+            guard chatActions.waitForExistence(timeout: 5) else {
+                if required {
+                    XCTFail(
+                        "The validation chat did not expose its Chat actions control."
+                    )
+                }
+                return
+            }
+            chatActions.tap()
+            let archiveMenuItem = app.descendants(matching: .any).matching(
+                NSPredicate(
+                    format: "label BEGINSWITH[c] %@ OR label BEGINSWITH[c] %@",
+                    "Archive",
+                    "归档"
+                )
+            ).firstMatch
+            guard archiveMenuItem.waitForExistence(timeout: 5) else {
+                if required {
+                    XCTFail(
+                        "The validation chat did not expose its Archive action."
+                    )
+                }
+                return
+            }
+            archiveMenuItem.tap()
+
+            let archiveConfirmation = app.buttons.matching(
+                NSPredicate(
+                    format: "label == %@ OR label == %@",
+                    "Archive",
+                    "归档"
+                )
+            ).firstMatch
+            if archiveConfirmation.waitForExistence(timeout: 3) {
+                archiveConfirmation.tap()
+            }
+            XCTAssertTrue(
+                row.waitForNonExistence(timeout: 10),
+                "The completed provider validation chat remained in Recents."
+            )
+        }
+
+        // A previous interrupted runner may have left a completed validation
+        // chat behind even though the provider response itself succeeded.
+        let staleCompletedReply = surface.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] %@", expected)
+        ).firstMatch
+        if staleCompletedReply.exists {
+            archiveValidationChatIfPresent(required: true)
+        }
+
         // A previous physical-device run can leave the restored account on an
         // active conversation. Stop that turn first, then always create a new
         // chat so the submit control is Send rather than Steer.
@@ -1273,7 +1346,6 @@ final class CodexPadParityCaptureUITests: XCTestCase {
         let composer = releasedComposer(in: surface)
         XCTAssertTrue(composer.waitForExistence(timeout: 10))
 
-        let expected = "CODEXPAD_REAL_PROVIDER_OK"
         composer.tap()
         composer.typeText(
             "Reply with exactly the concatenation of "
@@ -1300,37 +1372,20 @@ final class CodexPadParityCaptureUITests: XCTestCase {
             "The native fetch-stream diagnostic was unavailable."
         )
 
-        let streamDeadline = Date().addingTimeInterval(180)
-        var terminalStreamState: String?
-        while Date() < streamDeadline {
-            let state = streamState.label
-            if state == "error" || state == "cancelled" {
-                terminalStreamState = state
-                break
-            }
-            if state == "complete" {
-                terminalStreamState = state
-                break
-            }
-            RunLoop.current.run(
-                until: Date().addingTimeInterval(0.25)
-            )
-        }
-        guard terminalStreamState == "complete" else {
-            XCTFail(
-                "The saved ChatGPT account stream ended in state "
-                    + (terminalStreamState ?? streamState.label)
-                    + "."
-            )
-            return
-        }
-
         let completedReply = surface.staticTexts.matching(
             NSPredicate(format: "label CONTAINS[c] %@", expected)
         ).firstMatch
         XCTAssertTrue(
-            completedReply.exists,
-            "The completed real provider turn did not render its expected reply."
+            completedReply.waitForExistence(timeout: 180),
+            "The real provider turn did not render its expected reply; native stream state: "
+                + streamState.label
+                + "."
+        )
+        XCTAssertTrue(
+            ["complete", "idle"].contains(streamState.label),
+            "The expected reply rendered while the native stream remained active: "
+                + streamState.label
+                + "."
         )
         let stop = surface.buttons.matching(
             NSPredicate(
@@ -1346,6 +1401,149 @@ final class CodexPadParityCaptureUITests: XCTestCase {
 
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "CODEXPAD_PHYSICAL_REAL_PROVIDER_COMPLETED"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+
+        archiveValidationChatIfPresent(required: true)
+    }
+
+    @MainActor
+    func testCleanupRealProviderValidationChatOnPhysicalIPad() {
+        let app = XCUIApplication()
+        app.launchArguments += [
+            "-AppleLanguages", "(en)",
+            "-AppleLocale", "en_US",
+        ]
+        app.launchEnvironment["CODEXPAD_UI_TEST_GIT_WORKSPACE"] = "1"
+        if app.state != .notRunning {
+            app.terminate()
+        }
+        app.launch()
+
+        let surface = app.webViews["CodexDesktopSurfaceReady"]
+        XCTAssertTrue(surface.waitForExistence(timeout: releasedSurfaceBudget))
+        completeWelcomeIfNeeded(in: surface)
+        XCTAssertTrue(
+            signedInMarker(in: surface).waitForExistence(timeout: 30),
+            "The physical iPad did not restore its saved ChatGPT account."
+        )
+
+        let validationReply = surface.staticTexts.matching(
+            NSPredicate(
+                format: "label CONTAINS[c] %@",
+                "CODEXPAD_REAL_PROVIDER_OK"
+            )
+        ).firstMatch
+        XCTAssertTrue(
+            validationReply.waitForExistence(timeout: 10),
+            "The provider validation chat was not active for cleanup."
+        )
+
+        let chatActions = surface.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "label == %@ OR label == %@",
+                "Chat actions",
+                "聊天操作"
+            )
+        ).firstMatch
+        XCTAssertTrue(chatActions.waitForExistence(timeout: 5))
+        chatActions.tap()
+
+        let archive = app.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "label BEGINSWITH[c] %@ OR label BEGINSWITH[c] %@",
+                "Archive",
+                "归档"
+            )
+        ).firstMatch
+        XCTAssertTrue(archive.waitForExistence(timeout: 5))
+        archive.tap()
+
+        let confirmation = app.buttons.matching(
+            NSPredicate(
+                format: "label == %@ OR label == %@",
+                "Archive",
+                "归档"
+            )
+        ).firstMatch
+        if confirmation.waitForExistence(timeout: 3) {
+            confirmation.tap()
+        }
+        XCTAssertTrue(
+            validationReply.waitForNonExistence(timeout: 15),
+            "The provider validation reply remained visible after archival."
+        )
+        Thread.sleep(forTimeInterval: 5)
+
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "CODEXPAD_PHYSICAL_REAL_PROVIDER_CLEANED"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    @MainActor
+    func testFinalValidationFixtureCleanupOnPhysicalIPad() {
+        let app = XCUIApplication()
+        app.launchArguments += [
+            "-AppleLanguages", "(en)",
+            "-AppleLocale", "en_US",
+        ]
+        app.launchEnvironment[
+            "CODEXPAD_UI_TEST_CLEAN_VALIDATION_FIXTURES"
+        ] = "1"
+        app.launchEnvironment["XCTestConfigurationFilePath"] =
+            "CodexPadFinalValidationFixtureCleanup"
+        if app.state != .notRunning {
+            app.terminate()
+        }
+        app.launch()
+
+        let surface = app.webViews["CodexDesktopSurfaceReady"]
+        XCTAssertTrue(surface.waitForExistence(timeout: releasedSurfaceBudget))
+        completeWelcomeIfNeeded(in: surface)
+        XCTAssertTrue(
+            signedInMarker(in: surface).waitForExistence(timeout: 30),
+            "The physical iPad did not restore its saved ChatGPT account."
+        )
+
+        Thread.sleep(forTimeInterval: 15)
+        let validationReply = surface.staticTexts.matching(
+            NSPredicate(
+                format: "label CONTAINS[c] %@",
+                "CODEXPAD_REAL_PROVIDER_OK"
+            )
+        ).firstMatch
+        if validationReply.exists {
+            let newChat = surface.buttons.matching(
+                NSPredicate(
+                    format: "label == %@ OR label == %@",
+                    "New chat",
+                    "新聊天"
+                )
+            ).firstMatch
+            XCTAssertTrue(newChat.waitForExistence(timeout: 10))
+            newChat.tap()
+            XCTAssertTrue(
+                validationReply.waitForNonExistence(timeout: 10),
+                "New chat did not clear the archived validation detail."
+            )
+        }
+        Thread.sleep(forTimeInterval: 10)
+        XCTAssertFalse(
+            surface.staticTexts["Parity Git Workspace"].exists,
+            "A validation workspace remained after final cleanup."
+        )
+        XCTAssertFalse(
+            surface.staticTexts["Generate task title"].exists,
+            "The archived validation chat remained in the renderer catalog."
+        )
+        XCTAssertFalse(
+            validationReply.exists,
+            "The archived validation response remained visible."
+        )
+
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "CODEXPAD_PHYSICAL_FINAL_CLEAN_STATE"
         attachment.lifetime = .keepAlways
         add(attachment)
     }
@@ -1371,13 +1569,7 @@ final class CodexPadParityCaptureUITests: XCTestCase {
             surface.waitForExistence(timeout: releasedSurfaceBudget),
             "The official renderer did not reach its ready checkpoint."
         )
-        let anotherWay = surface.buttons.matching(
-            NSPredicate(
-                format: "label == %@ OR label == %@",
-                "Sign in another way",
-                "使用其他方式登录"
-            )
-        ).firstMatch
+        let anotherWay = apiKeySignInEntry(in: surface)
         XCTAssertTrue(anotherWay.waitForExistence(timeout: 10))
         anotherWay.tap()
 
@@ -1391,13 +1583,7 @@ final class CodexPadParityCaptureUITests: XCTestCase {
         XCTAssertTrue(apiKeyField.waitForExistence(timeout: 10))
         apiKeyField.tap()
         apiKeyField.typeText("sk-codexpad-ui-test-placeholder")
-        let continueButton = surface.buttons.matching(
-            NSPredicate(
-                format: "label == %@ OR label == %@",
-                "Continue",
-                "继续"
-            )
-        ).firstMatch
+        let continueButton = apiKeySubmitButton(in: surface)
         XCTAssertTrue(continueButton.waitForExistence(timeout: 10))
         continueButton.tap()
         XCTAssertTrue(
@@ -1505,21 +1691,34 @@ final class CodexPadParityCaptureUITests: XCTestCase {
         var byTag: [String: Int] = [:]
         var labelFingerprints = Set<String>()
         var controlCount = 0
+        let inventoryDeadline = Date().addingTimeInterval(5)
 
-        for group in controlGroups {
-            for element in group.query.allElementsBoundByIndex {
-                let label = normalizedInventoryLabel(for: element)
-                let tag = group.tag
-                let role = group.role
-                let fingerprintInput = tag + "\0" + role + "\0" + label
-                let digest = SHA256.hash(data: Data(fingerprintInput.utf8))
-                    .map { String(format: "%02x", $0) }
-                    .joined()
-                byTag[tag, default: 0] += 1
-                labelFingerprints.insert(digest)
-                controlCount += 1
+        // WebKit's accessibility child process can briefly disappear while a
+        // screenshot is being attached on a physical device. Retry the actual
+        // control query, but keep the non-empty inventory assertion below so a
+        // renderer that genuinely exposes no controls still fails acceptance.
+        repeat {
+            byTag.removeAll(keepingCapacity: true)
+            labelFingerprints.removeAll(keepingCapacity: true)
+            controlCount = 0
+            for group in controlGroups {
+                for element in group.query.allElementsBoundByIndex {
+                    let label = normalizedInventoryLabel(for: element)
+                    let tag = group.tag
+                    let role = group.role
+                    let fingerprintInput = tag + "\0" + role + "\0" + label
+                    let digest = SHA256.hash(data: Data(fingerprintInput.utf8))
+                        .map { String(format: "%02x", $0) }
+                        .joined()
+                    byTag[tag, default: 0] += 1
+                    labelFingerprints.insert(digest)
+                    controlCount += 1
+                }
             }
-        }
+            if controlCount == 0 && Date() < inventoryDeadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+            }
+        } while controlCount == 0 && Date() < inventoryDeadline
 
         XCTAssertGreaterThan(
             controlCount,
@@ -3807,6 +4006,38 @@ final class CodexPadParityCaptureUITests: XCTestCase {
                 "发送",
                 "Change project:",
                 "切换项目："
+            )
+        ).firstMatch
+    }
+
+    @MainActor
+    private func apiKeySignInEntry(
+        in surface: XCUIElement
+    ) -> XCUIElement {
+        surface.buttons.matching(
+            NSPredicate(
+                format:
+                    "label == %@ OR label == %@ OR label == %@ OR label == %@",
+                "Sign in another way",
+                "使用其他方式登录",
+                "Use API key",
+                "使用 API 密钥"
+            )
+        ).firstMatch
+    }
+
+    @MainActor
+    private func apiKeySubmitButton(
+        in surface: XCUIElement
+    ) -> XCUIElement {
+        surface.buttons.matching(
+            NSPredicate(
+                format:
+                    "label == %@ OR label == %@ OR label == %@ OR label == %@",
+                "Continue",
+                "继续",
+                "OK",
+                "确定"
             )
         ).firstMatch
     }

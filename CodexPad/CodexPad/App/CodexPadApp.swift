@@ -91,6 +91,15 @@ struct CodexPadApp: App {
             )
         }
 
+        do {
+            try CodexPadValidationFixtureCleaner.cleanIfRequested(
+                environment: environment,
+                sessionStore: sessionStore
+            )
+        } catch {
+            sessionStore.recordStartupProblem(error)
+        }
+
         #if DEBUG
         do {
             let fileManager = FileManager.default
@@ -154,6 +163,29 @@ struct CodexPadApp: App {
         }
         .commands {
             CodexPadDesktopCommands()
+        }
+    }
+}
+
+@MainActor
+private enum CodexPadValidationFixtureCleaner {
+    static func cleanIfRequested(
+        environment: [String: String],
+        sessionStore: CodexSessionStore
+    ) throws {
+        guard environment["XCTestConfigurationFilePath"] != nil,
+              environment[
+                "CODEXPAD_UI_TEST_CLEAN_VALIDATION_FIXTURES"
+              ] == "1"
+        else {
+            return
+        }
+
+        let validationWorkspaceIDs = sessionStore.state.workspaces
+            .filter { $0.displayName == "Parity Git Workspace" }
+            .map(\.id)
+        for workspaceID in validationWorkspaceIDs {
+            try sessionStore.removeWorkspace(id: workspaceID)
         }
     }
 }
