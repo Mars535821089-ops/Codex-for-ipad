@@ -2,6 +2,7 @@
     import CodexPadDomain
     import CodexPadProtocolBridge
 #endif
+import CryptoKit
 import Foundation
 
 public enum CodexDesktopFetchStreamState:
@@ -454,6 +455,77 @@ public enum CodexDesktopNetworkFetchError:
     case deviceCheckRegistrationFailed(status: Int, message: String)
 }
 
+/// Shares the authenticated product bootstrap across renderer windows.
+///
+/// Desktop Codex opens the realtime avatar in a second renderer. On iPad both
+/// renderers traverse the native fetch bridge, and issuing the same short-lived
+/// Statsig bootstrap twice can leave the overlay waiting after the primary
+/// renderer has already received a valid response. Scope the cached response to
+/// one ChatGPT account and keep it only briefly so feature changes are still
+/// picked up without relaunching the app.
+public actor CodexDesktopStatsigBootstrapResponseCache {
+    private struct Entry: Sendable {
+        let response: CodexDesktopNetworkTransportResponse
+        let storedAt: Date
+    }
+
+    private let maximumAge: TimeInterval
+    private var entries: [String: Entry] = [:]
+
+    public init(maximumAge: TimeInterval = 300) {
+        self.maximumAge = maximumAge
+    }
+
+    func response(
+        for accountID: String?,
+        requestBodyFingerprint: String
+    ) -> CodexDesktopNetworkTransportResponse? {
+        guard let accountID, !accountID.isEmpty,
+              let entry = entries[cacheKey(
+                  accountID: accountID,
+                  requestBodyFingerprint: requestBodyFingerprint
+              )]
+        else {
+            return nil
+        }
+        guard Date().timeIntervalSince(entry.storedAt) <= maximumAge else {
+            entries.removeValue(
+                forKey: cacheKey(
+                    accountID: accountID,
+                    requestBodyFingerprint: requestBodyFingerprint
+                )
+            )
+            return nil
+        }
+        return entry.response
+    }
+
+    func store(
+        _ response: CodexDesktopNetworkTransportResponse,
+        for accountID: String?,
+        requestBodyFingerprint: String
+    ) {
+        guard let accountID, !accountID.isEmpty,
+              (200 ..< 300).contains(response.status)
+        else {
+            return
+        }
+        entries[
+            cacheKey(
+                accountID: accountID,
+                requestBodyFingerprint: requestBodyFingerprint
+            )
+        ] = Entry(response: response, storedAt: Date())
+    }
+
+    private func cacheKey(
+        accountID: String,
+        requestBodyFingerprint: String
+    ) -> String {
+        "\(accountID):\(requestBodyFingerprint)"
+    }
+}
+
 public struct CodexDesktopNetworkFetchClient: Sendable {
     public static let releasedProductAPIBaseURL =
         URL(string: "https://chatgpt.com/backend-api")!
@@ -480,6 +552,8 @@ public struct CodexDesktopNetworkFetchClient: Sendable {
     private let deviceCheckTokenProvider:
         any CodexDesktopDeviceCheckTokenProviding
     private let statsigInitializeTimeout: Duration
+    private let statsigBootstrapCache:
+        CodexDesktopStatsigBootstrapResponseCache
 
     public init(
         transport:
@@ -497,12 +571,16 @@ public struct CodexDesktopNetworkFetchClient: Sendable {
         deviceCheckTokenProvider:
             any CodexDesktopDeviceCheckTokenProviding =
                 CodexDesktopPlatformDeviceCheckTokenProvider(),
-        statsigInitializeTimeout: Duration = .seconds(5)
+        statsigInitializeTimeout: Duration = .seconds(5),
+        statsigBootstrapCache:
+            CodexDesktopStatsigBootstrapResponseCache =
+                CodexDesktopStatsigBootstrapResponseCache()
     ) {
         self.transport = transport
         self.streamTransport = streamTransport
         self.deviceCheckTokenProvider = deviceCheckTokenProvider
         self.statsigInitializeTimeout = statsigInitializeTimeout
+        self.statsigBootstrapCache = statsigBootstrapCache
     }
 
     public func stream(
@@ -1088,10 +1166,30 @@ public struct CodexDesktopNetworkFetchClient: Sendable {
                 headers: headers,
                 body: body
             )
-            var transportResponse = try await executeTransport(
-                transportRequest,
-                resolvedURL: resolvedURL
-            )
+            var responseAccountID = credentials?.accountID
+            var transportResponse: CodexDesktopNetworkTransportResponse
+            let statsigRequestBodyFingerprint =
+                Self.statsigRequestBodyFingerprint(body)
+            if Self.isStatsigBootstrapURL(resolvedURL),
+               let cached = await statsigBootstrapCache.response(
+                   for: responseAccountID,
+                   requestBodyFingerprint: statsigRequestBodyFingerprint
+               )
+            {
+                transportResponse = cached
+            } else {
+                transportResponse = try await executeTransport(
+                    transportRequest,
+                    resolvedURL: resolvedURL
+                )
+                if Self.isStatsigBootstrapURL(resolvedURL) {
+                    await statsigBootstrapCache.store(
+                        transportResponse,
+                        for: responseAccountID,
+                        requestBodyFingerprint: statsigRequestBodyFingerprint
+                    )
+                }
+            }
             if canRefreshChatGPTCredentials,
                Self.isExpiredChatGPTTokenResponse(transportResponse),
                let refreshCredentials
@@ -1138,6 +1236,14 @@ public struct CodexDesktopNetworkFetchClient: Sendable {
                     transportRequest,
                     resolvedURL: resolvedURL
                 )
+                responseAccountID = refreshed.accountID
+                if Self.isStatsigBootstrapURL(resolvedURL) {
+                    await statsigBootstrapCache.store(
+                        transportResponse,
+                        for: responseAccountID,
+                        requestBodyFingerprint: statsigRequestBodyFingerprint
+                    )
+                }
             }
             return try Self.hostResponse(
                 for: request,
@@ -1172,6 +1278,14 @@ public struct CodexDesktopNetworkFetchClient: Sendable {
                 errorCode: Self.publicErrorCode(for: error)
             )
         }
+    }
+
+    private static func statsigRequestBodyFingerprint(
+        _ body: Data?
+    ) -> String {
+        SHA256.hash(data: body ?? Data()).map {
+            String(format: "%02x", $0)
+        }.joined()
     }
 
     /// Mirrors Electron's `deviceCheckCookieManager.ensureCookie` before the
@@ -1317,6 +1431,18 @@ public struct CodexDesktopNetworkFetchClient: Sendable {
         }
         return url.path == "/backend-api/wham/statsig/bootstrap"
             || url.path == "/backend-api/wham/accounts/check"
+    }
+
+    private static func isStatsigBootstrapURL(
+        _ url: URL
+    ) -> Bool {
+        guard url.scheme?.lowercased() == "https",
+              url.port == nil,
+              url.host?.lowercased() == "chatgpt.com"
+        else {
+            return false
+        }
+        return url.path == "/backend-api/wham/statsig/bootstrap"
     }
 
     private static func resolve(_ value: String) throws -> URL {
@@ -1644,9 +1770,13 @@ public struct CodexDesktopNetworkFetchClient: Sendable {
                !binaryResponse
             {
                 do {
-                    body = try JSONDecoder().decode(
+                    let decoded = try JSONDecoder().decode(
                         CodexJSONValue.self,
                         from: transportResponse.body
+                    )
+                    body = try statsigLookupCompatibleBody(
+                        decoded,
+                        requestURL: request.url
                     )
                 } catch {
                     throw CodexDesktopNetworkFetchError
@@ -1668,6 +1798,87 @@ public struct CodexDesktopNetworkFetchClient: Sendable {
             headers: headers,
             body: body
         )
+    }
+
+    /// Statsig's released v2 bootstrap may expose the realtime-voice config
+    /// only under its hashed key and keep the actual value in the top-level
+    /// `values` table. The desktop SDK resolves that representation inside
+    /// Electron, while the WKWebView path can otherwise return an empty
+    /// DynamicConfig for the original key. Preserve the released entry and
+    /// add an equivalent original-key/value view for the renderer lookup.
+    private static func statsigLookupCompatibleBody(
+        _ body: CodexJSONValue,
+        requestURL: String
+    ) throws -> CodexJSONValue {
+        let path = requestURL.split(separator: "?", maxSplits: 1)[0]
+        guard path.hasSuffix("/wham/statsig/bootstrap"),
+              case var .object(responseFields) = body,
+              case let .string(payload)? = responseFields["statsigPayload"],
+              let payloadData = payload.data(using: .utf8),
+              case var .object(payloadFields) = try JSONDecoder().decode(
+                  CodexJSONValue.self,
+                  from: payloadData
+              ),
+              case var .object(configs)? = payloadFields["dynamic_configs"]
+        else {
+            return body
+        }
+
+        let originalID = "1193530394"
+        let releasedHashedID = "729731510"
+        guard let released = configs[originalID]
+                ?? configs[releasedHashedID],
+              case var .object(releasedFields) = released
+        else {
+            return body
+        }
+
+        let resolvedValue: CodexJSONValue?
+        if let directValue = releasedFields["value"] {
+            resolvedValue = directValue
+        } else if let pointer = releasedFields["v"],
+                  case let .object(values)? = payloadFields["values"]
+        {
+            let pointerKey: String?
+            switch pointer {
+            case let .string(value):
+                pointerKey = value
+            case let .integer(value):
+                pointerKey = String(value)
+            default:
+                pointerKey = nil
+            }
+            resolvedValue = pointerKey.flatMap { values[$0] }
+        } else {
+            resolvedValue = nil
+        }
+        guard let resolvedValue else {
+            return body
+        }
+
+        releasedFields["value"] = resolvedValue
+        let compatibleEntry = CodexJSONValue.object(releasedFields)
+        configs[originalID] = compatibleEntry
+        if configs[releasedHashedID] != nil {
+            configs[releasedHashedID] = compatibleEntry
+        }
+        payloadFields["dynamic_configs"] = .object(configs)
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let compatiblePayload = try encoder.encode(
+            CodexJSONValue.object(payloadFields)
+        )
+        guard let compatiblePayloadString = String(
+            data: compatiblePayload,
+            encoding: .utf8
+        ) else {
+            return body
+        }
+        responseFields["statsigPayload"] = .string(
+            compatiblePayloadString
+        )
+        return .object(responseFields)
     }
 
     private static func decodeDataURL(

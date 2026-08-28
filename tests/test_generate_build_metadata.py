@@ -101,6 +101,11 @@ class BuildMetadataGenerationTests(unittest.TestCase):
             self.project
             / "versions/26.721.81911/official-source.json"
         )
+        if not source.is_file():
+            self.skipTest(
+                "official source records are not distributed in the public "
+                "source repository"
+            )
         expected = json.loads(source.read_text(encoding="utf-8"))
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary) / "CodexBuildMetadata.generated.swift"

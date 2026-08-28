@@ -739,11 +739,11 @@ func desktopAppHostSessionStoreSendsImportCallsToTheOwningLogicalPort()
 
     let firstCallback = CodexDesktopAppHostCallbackIdentity(
         portID: "app-host-3",
-        callbackID: 41
+        callbackID: -41
     )
     let secondCallback = CodexDesktopAppHostCallbackIdentity(
         portID: "app-host-4",
-        callbackID: 41
+        callbackID: -41
     )
     #expect(firstCallback != secondCallback)
 
@@ -765,14 +765,14 @@ func desktopAppHostSessionStoreSendsImportCallsToTheOwningLogicalPort()
             == CodexDesktopAppHostOutboundFrame(
                 portID: "app-host-3",
                 frame:
-                    #"["push",["pipeline",41,[],[{"type":"changed"}]]]"#
+                    #"["push",["pipeline",-41,[],[{"type":"changed"}]]]"#
             )
     )
     #expect(
         secondFrame
             == CodexDesktopAppHostOutboundFrame(
                 portID: "app-host-4",
-                frame: #"["push",["pipeline",41,[],["ready"]]]"#
+                frame: #"["push",["pipeline",-41,[],["ready"]]]"#
             )
     )
     #expect(emitted == [firstFrame, secondFrame])

@@ -149,6 +149,10 @@ func codexRealtimeServiceCreatesWebRTCCallAndJoinsSideband()
             == "https://chatgpt.com/backend-api/codex/realtime/calls?intent=quicksilver&architecture=avas"
     )
     #expect(call.headers["Content-Type"] == "application/json")
+    #expect(
+        call.headers["OpenAI-Alpha"]
+            == "quicksilver=v2"
+    )
     let body = try #require(call.body)
     let bodyValue = try JSONDecoder().decode(
         CodexJSONValue.self,
@@ -175,7 +179,17 @@ func codexRealtimeServiceCreatesWebRTCCallAndJoinsSideband()
     )
     #expect(
         sideband.url?.absoluteString
-            == "wss://chatgpt.com/backend-api/codex/realtime?intent=quicksilver&call_id=call-fixture"
+            == "wss://api.openai.com/v1/realtime?call_id=call-fixture"
+    )
+    #expect(
+        sideband.value(
+            forHTTPHeaderField: "Authorization"
+        ) == "Bearer fixture-token"
+    )
+    #expect(
+        sideband.value(
+            forHTTPHeaderField: "ChatGPT-Account-ID"
+        ) == "fixture-account"
     )
     let recorded = await notifications.values
     #expect(
@@ -211,6 +225,55 @@ func codexRealtimeServiceCreatesWebRTCCallAndJoinsSideband()
             ]
     )
     try await service.stop(threadID: "thread-webrtc")
+}
+
+@Test @MainActor
+func codexRealtimeServicePreservesOfficialWebRTCCallFailureDetail()
+    async throws
+{
+    let transport = RealtimeHTTPTransport(
+        response: .init(
+            status: 400,
+            headers: [:],
+            body: Data(
+                #"{"detail":"fixture rejected voice or model"}"#.utf8
+            )
+        )
+    )
+    let service = CodexRealtimeService(
+        connector: RealtimeMockConnector(
+            socket: RealtimeMockSocket()
+        ),
+        httpTransport: transport,
+        credentialsProvider: {
+            CodexOfficialCredentials(
+                accessToken: "fixture-token",
+                accountID: "fixture-account"
+            )
+        },
+        notificationSink: { _, _ in }
+    )
+
+    do {
+        try await service.start(
+            .init(
+                threadID: "thread-rejected",
+                model: "gpt-realtime-fixture",
+                outputModality: "audio",
+                prompt: nil,
+                realtimeSessionID: nil,
+                transport: .webrtc(sdp: "v=0\r\no=offer\r\n"),
+                version: "v1",
+                voice: "fixture-voice"
+            )
+        )
+        Issue.record("expected the official call rejection")
+    } catch {
+        #expect(
+            error.localizedDescription
+                == "realtime connection failed: realtime call returned HTTP 400: {\"detail\":\"fixture rejected voice or model\"}"
+        )
+    }
 }
 
 @Test @MainActor
@@ -429,7 +492,7 @@ func codexRealtimeServiceCreatesV3WebRTCCallWithoutSecondSessionUpdate()
     )
     #expect(
         sideband.url?.absoluteString
-            == "wss://chatgpt.com/backend-api/codex/live/call-fixture"
+            == "wss://api.openai.com/v1/live/call-fixture"
     )
     #expect(
         sideband.value(
@@ -438,6 +501,10 @@ func codexRealtimeServiceCreatesV3WebRTCCallWithoutSecondSessionUpdate()
     )
     #expect((try await socket.decodedMessages()).isEmpty)
     let call = try #require(await transport.requests.first)
+    #expect(
+        call.headers["OpenAI-Alpha"]
+            == "quicksilver=v2"
+    )
     let callBody = try #require(call.body)
     let value = try JSONDecoder().decode(
         CodexJSONValue.self,
@@ -541,14 +608,12 @@ private actor RealtimeMockConnector: CodexRemoteControlWebSocketConnecting {
 private actor RealtimeHTTPTransport:
     CodexDesktopNetworkFetchTransport
 {
+    private let response: CodexDesktopNetworkTransportResponse
     private(set) var requests:
         [CodexDesktopNetworkTransportRequest] = []
 
-    func execute(
-        _ request: CodexDesktopNetworkTransportRequest
-    ) async throws -> CodexDesktopNetworkTransportResponse {
-        requests.append(request)
-        return .init(
+    init(
+        response: CodexDesktopNetworkTransportResponse = .init(
             status: 200,
             headers: [
                 "Location":
@@ -556,6 +621,15 @@ private actor RealtimeHTTPTransport:
             ],
             body: Data("v=0\r\no=answer\r\n".utf8)
         )
+    ) {
+        self.response = response
+    }
+
+    func execute(
+        _ request: CodexDesktopNetworkTransportRequest
+    ) async throws -> CodexDesktopNetworkTransportResponse {
+        requests.append(request)
+        return response
     }
 }
 

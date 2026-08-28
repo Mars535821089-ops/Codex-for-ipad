@@ -1288,7 +1288,7 @@ class ImportPipelineContractTests(unittest.TestCase):
                     "set -euo pipefail\n"
                     "if [[ \"$*\" == 'xcdevice list --timeout 5' ]]; then\n"
                     "  cat <<'JSON'\n"
-                    '[{"name":"Mars iPad","identifier":"00000000-0000000000000000",'
+                    '[{"name":"Example iPad","identifier":"00000000-0000000000000000",'
                     '"available":true,"simulator":false,'
                     '"platform":"com.apple.platform.iphoneos",'
                     '"modelName":"iPad Pro (12.9-inch) (5th generation)",'
@@ -1437,7 +1437,7 @@ class ImportPipelineContractTests(unittest.TestCase):
                     "xcuiTests": "passed",
                     "physicalDeviceTests": "passed",
                     "physicalDeviceUDID": "00000000-0000000000000000",
-                    "physicalDeviceName": "Mars iPad",
+                    "physicalDeviceName": "Example iPad",
                     "physicalDeviceModel": (
                         "iPad Pro (12.9-inch) (5th generation)"
                     ),

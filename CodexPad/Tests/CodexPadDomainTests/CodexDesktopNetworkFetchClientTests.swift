@@ -1376,6 +1376,156 @@ func desktopNetworkFetchPreservesNestedStatsigPayloadString() async {
 }
 
 @Test
+func desktopNetworkFetchExpandsReleasedVoiceConfigForStatsigLookup() async {
+    let nestedPayload = #"{"dynamic_configs":{"729731510":{"v":"voice-value"}},"values":{"voice-value":{"greeting_enabled":true,"prompt":"fixture-prompt"}}}"#
+    let outerPayload = try! JSONSerialization.data(
+        withJSONObject: ["statsigPayload": nestedPayload],
+        options: [.sortedKeys]
+    )
+    let transport = NetworkFetchTransportRecorder(
+        response: .init(
+            status: 200,
+            headers: ["content-type": "application/json"],
+            body: outerPayload
+        )
+    )
+    let client = CodexDesktopNetworkFetchClient(transport: transport)
+
+    let response = await client.response(
+        to: networkFetchRequest(
+            requestID: "request-voice-statsig-bootstrap",
+            url: "/wham/statsig/bootstrap"
+        ),
+        credentials: nil
+    )
+
+    guard case let .fetchSuccess(_, _, _, .object(fields)) = response,
+          case let .string(payload)? = fields["statsigPayload"],
+          let payloadData = payload.data(using: .utf8),
+          let decoded = try? JSONDecoder().decode(
+              CodexJSONValue.self,
+              from: payloadData
+          ),
+          case let .object(payloadFields) = decoded,
+          case let .object(configs)? = payloadFields["dynamic_configs"],
+          case let .object(released)? = configs["729731510"],
+          case let .object(alias)? = configs["1193530394"]
+    else {
+        Issue.record("Released voice config was not made lookup-compatible")
+        return
+    }
+
+    let expectedValue: CodexJSONValue = .object([
+        "greeting_enabled": .bool(true),
+        "prompt": .string("fixture-prompt"),
+    ])
+    #expect(released["value"] == expectedValue)
+    #expect(alias["value"] == expectedValue)
+    #expect(alias["v"] == .string("voice-value"))
+}
+
+@Test
+func desktopNetworkFetchDoesNotReuseStatsigBootstrapAcrossDifferentContexts()
+    async
+{
+    let nestedPayload = #"{"dynamic_configs":{"1193530394":{"value":{"enabled":true}}}}"#
+    let outerPayload = try! JSONSerialization.data(
+        withJSONObject: ["statsigPayload": nestedPayload],
+        options: [.sortedKeys]
+    )
+    let transport = NetworkFetchTransportRecorder(
+        response: .init(
+            status: 200,
+            headers: ["content-type": "application/json"],
+            body: outerPayload
+        )
+    )
+    let client = CodexDesktopNetworkFetchClient(transport: transport)
+    let credentials = CodexOfficialCredentials(
+        accessToken: "fixture-access-token",
+        accountID: "fixture-account"
+    )
+
+    let primary = await client.response(
+        to: networkFetchRequest(
+            requestID: "primary-statsig",
+            url: "/wham/statsig/bootstrap",
+            body: #"{"renderer":"primary"}"#
+        ),
+        credentials: credentials
+    )
+    let overlay = await client.response(
+        to: networkFetchRequest(
+            requestID: "overlay-statsig",
+            url: "/wham/statsig/bootstrap",
+            body: #"{"renderer":"overlay"}"#
+        ),
+        credentials: credentials
+    )
+
+    #expect(await transport.capturedRequests().count == 2)
+    #expect(
+        primary == .fetchSuccess(
+            requestID: "primary-statsig",
+            status: 200,
+            headers: ["content-type": "application/json"],
+            body: .object(["statsigPayload": .string(nestedPayload)])
+        )
+    )
+    #expect(
+        overlay == .fetchSuccess(
+            requestID: "overlay-statsig",
+            status: 200,
+            headers: ["content-type": "application/json"],
+            body: .object(["statsigPayload": .string(nestedPayload)])
+        )
+    )
+}
+
+@Test
+func desktopNetworkFetchReusesAuthenticatedStatsigBootstrapForSameContext()
+    async
+{
+    let nestedPayload = #"{"dynamic_configs":{"1193530394":{"value":{"enabled":true}}}}"#
+    let outerPayload = try! JSONSerialization.data(
+        withJSONObject: ["statsigPayload": nestedPayload],
+        options: [.sortedKeys]
+    )
+    let transport = NetworkFetchTransportRecorder(
+        response: .init(
+            status: 200,
+            headers: ["content-type": "application/json"],
+            body: outerPayload
+        )
+    )
+    let client = CodexDesktopNetworkFetchClient(transport: transport)
+    let credentials = CodexOfficialCredentials(
+        accessToken: "fixture-access-token",
+        accountID: "fixture-account"
+    )
+    let requestBody = #"{"stableID":"fixture-renderer"}"#
+
+    _ = await client.response(
+        to: networkFetchRequest(
+            requestID: "primary-statsig",
+            url: "/wham/statsig/bootstrap",
+            body: requestBody
+        ),
+        credentials: credentials
+    )
+    _ = await client.response(
+        to: networkFetchRequest(
+            requestID: "same-context-statsig",
+            url: "/wham/statsig/bootstrap",
+            body: requestBody
+        ),
+        credentials: credentials
+    )
+
+    #expect(await transport.capturedRequests().count == 1)
+}
+
+@Test
 func desktopNetworkFetchBoundsReleasedStatsigInitializeAndCancelsTransport()
     async
 {

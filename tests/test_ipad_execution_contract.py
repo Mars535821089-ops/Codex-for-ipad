@@ -43,6 +43,10 @@ OFFICIAL_PROVIDER_CLIENT = (
     ROOT
     / "CodexPad/CodexPad/ProtocolBridge/CodexOfficialProviderClient.swift"
 )
+DESKTOP_WEBVIEW_HOST = (
+    ROOT
+    / "CodexPad/CodexPad/Application/CodexDesktopWebViewHost.swift"
+)
 
 
 class IPadExecutionContractTests(unittest.TestCase):
@@ -775,7 +779,7 @@ class IPadExecutionContractTests(unittest.TestCase):
                     "operatingSystemVersion": "27.0",
                 },
                 {
-                    "name": "Mars丶Ipad Pro 5代",
+                    "name": "Example iPad Pro",
                     "identifier": selected_udid,
                     "available": True,
                     "simulator": False,
@@ -802,7 +806,7 @@ class IPadExecutionContractTests(unittest.TestCase):
         selected_udid = "00000000-0000000000000000"
         result = self._run_selector(
             [{
-                "name": "Mars丶Ipad Pro 5代",
+                "name": "Example iPad Pro",
                 "identifier": selected_udid,
                 "available": True,
                 "simulator": False,
@@ -818,7 +822,7 @@ class IPadExecutionContractTests(unittest.TestCase):
             json.loads(result.stdout),
             {
                 "udid": selected_udid,
-                "name": "Mars丶Ipad Pro 5代",
+                "name": "Example iPad Pro",
                 "modelName": "iPad Pro (12.9-inch) (5th generation)",
                 "operatingSystemVersion": "26.0",
             },
@@ -1619,6 +1623,50 @@ class IPadExecutionContractTests(unittest.TestCase):
         self.assertTrue(
             info["NSAppTransportSecurity"]["NSAllowsLocalNetworking"]
         )
+
+    def test_voice_capture_declares_privacy_usage_and_webview_permission_delegate(
+        self,
+    ) -> None:
+        info_path = ROOT / "CodexPad/CodexPad/Resources/Info.plist"
+        with info_path.open("rb") as stream:
+            info = plistlib.load(stream)
+        self.assertTrue(info["NSMicrophoneUsageDescription"].strip())
+
+        host = DESKTOP_WEBVIEW_HOST.read_text(encoding="utf-8")
+        self.assertIn("WKUIDelegate", host)
+        self.assertIn("webView.uiDelegate = self", host)
+        self.assertIn("requestMediaCapturePermissionFor", host)
+        self.assertIn("decisionHandler: @escaping @MainActor", host)
+        self.assertIn("decisionHandler(.grant)", host)
+
+    def test_voice_overlay_receives_persisted_atom_sync_on_its_own_webview(
+        self,
+    ) -> None:
+        controller = DESKTOP_SURFACE_CONTROLLER.read_text(encoding="utf-8")
+        callback = controller[
+            controller.index("private func configureAvatarOverlayHostCallbacks(") :
+            controller.index("private func presentAvatarOverlayIfNeeded()")
+        ]
+
+        self.assertIn("replyHost: overlayHost", callback)
+        self.assertIn(
+            "try overlayHost.markHomeDataLoaded()",
+            callback,
+        )
+        self.assertIn("avatar-overlay home-data-ready", callback)
+        self.assertIn("replyHost: CodexDesktopWebViewHost? = nil", controller)
+        self.assertIn("await send(response, replyingTo: replyHost)", controller)
+        self.assertIn("replyingTo: replyHost", controller)
+
+        mcp_case = controller[
+            controller.index("case let .mcpRequest(request):") :
+            controller.index("case let .mcpResponse(hostID, response):")
+        ]
+        self.assertIn(
+            "await send(routed.response, replyingTo: replyHost)",
+            mcp_case,
+        )
+        self.assertNotIn("await send(routed.response)\n", mcp_case)
 
 
 if __name__ == "__main__":

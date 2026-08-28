@@ -49,10 +49,9 @@ class PhysicalRealChatUIContractTests(unittest.TestCase):
         )[0]
 
         self.assertIn('"CodexLastFetchStreamState"', test_body)
-        self.assertIn('state == "complete"', test_body)
-        self.assertIn('state == "error"', test_body)
-        self.assertNotIn("completedReply.waitForExistence", test_body)
-        self.assertEqual(test_body.count("completedReply.exists"), 1)
+        self.assertIn('["complete", "idle"].contains(streamState.label)', test_body)
+        self.assertIn("completedReply.waitForExistence(timeout: 180)", test_body)
+        self.assertNotIn("addingTimeInterval(10)", test_body)
 
     def test_official_provider_preserves_ipados_system_proxy_routing(self):
         source = (
@@ -74,14 +73,15 @@ class PhysicalRealChatUIContractTests(unittest.TestCase):
             / "CodexPad/CodexPad/Application/CodexDesktopNetworkFetchClient.swift"
         ).read_text(encoding="utf-8")
 
-        make_session = source.split(
-            "public static func makeDefaultSession() -> URLSession {", 1
-        )[1].split("return URLSession(configuration: configuration)", 1)[0]
+        configuration = source.split(
+            "public static func configuration() -> URLSessionConfiguration {",
+            1,
+        )[1].split("return configuration", 1)[0]
 
-        self.assertNotIn("connectionProxyDictionary", make_session)
-        self.assertNotIn("kCFNetworkProxiesHTTPEnable", make_session)
-        self.assertIn("system proxy", make_session)
-        self.assertIn("/f/conversation", make_session)
+        self.assertNotIn("connectionProxyDictionary =", configuration)
+        self.assertNotIn("kCFNetworkProxiesHTTPEnable", configuration)
+        self.assertIn("system proxy", configuration)
+        self.assertIn('path.hasSuffix("/f/conversation")', source)
 
     def test_released_composer_locator_covers_observed_physical_ipad_labels(self):
         source = (
@@ -106,7 +106,7 @@ class PhysicalRealChatUIContractTests(unittest.TestCase):
             / "CodexPad/Tests/CodexPadUITests/CodexPadParityCaptureUITests.swift"
         ).read_text(encoding="utf-8")
 
-        self.assertEqual(source.count("let composer = releasedComposer(in:"), 3)
+        self.assertEqual(source.count("let composer = releasedComposer(in:"), 4)
 
 
 if __name__ == "__main__":

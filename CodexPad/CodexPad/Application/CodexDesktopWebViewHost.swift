@@ -88,6 +88,15 @@ public struct CodexDesktopWebViewLoadPlan:
     }
 }
 
+public enum CodexDesktopWebViewNavigationRequest {
+    public static func make(url: URL) -> URLRequest {
+        URLRequest(
+            url: url,
+            cachePolicy: .reloadIgnoringLocalCacheData
+        )
+    }
+}
+
 public enum CodexDesktopWebViewHostError:
     Error,
     Equatable,
@@ -215,6 +224,342 @@ public enum CodexDesktopIPadLoginResourceAdapter {
     }
 }
 
+/// WebKit does not reliably deliver stylesheet `load` events for custom URL
+/// schemes. The released Vite helper waits on those events before invoking a
+/// lazy module import, which leaves voice and other lazy surfaces suspended.
+/// The stylesheet link is already appended before this branch, so iPadOS can
+/// load it asynchronously while the JavaScript module proceeds immediately.
+public enum CodexDesktopIPadLazyModuleResourceAdapter {
+    private static let initialResourcePrefix = "app-initial-"
+    private static let releasedStylesheetWait =
+        #"if(r)return new Promise((e,n)=>{i.addEventListener(`load`,e),i.addEventListener(`error`,()=>n(Error(`Unable to preload CSS for ${t}`)))})"#
+
+    public static func adapt(
+        _ data: Data,
+        resourceFilename: String
+    ) throws -> Data {
+        guard resourceFilename.hasPrefix(initialResourcePrefix),
+              resourceFilename.hasSuffix(".js"),
+              var source = String(data: data, encoding: .utf8),
+              source.contains(releasedStylesheetWait)
+        else {
+            return data
+        }
+
+        source = source.replacingOccurrences(
+            of: releasedStylesheetWait,
+            with: "if(r)return"
+        )
+        guard let adapted = source.data(using: .utf8) else {
+            throw CodexDesktopWebViewHostError.invalidEntryDocumentEncoding
+        }
+        return adapted
+    }
+}
+
+/// The released renderer uses a memory router whose desktop window bootstrap
+/// normally supplies the initial route. A standalone WKWebView has no desktop
+/// bootstrap, so preserve the requested app URL when the router is created.
+/// The main entry document remains rooted at `/`, while auxiliary windows such
+/// as `/avatar-overlay` start at their released route.
+public enum CodexDesktopIPadMemoryRouterResourceAdapter {
+    private static let initialResourcePrefix = "app-initial-"
+    private static let releasedRouterEntry =
+        "r=(0,Z9.jsx)(_Vs,{children:n})"
+    private static let iPadRouterEntry = #"r=(0,Z9.jsx)(_Vs,{initialEntries:[window.location.pathname===`/index.html`?`/`:`${window.location.pathname}${window.location.search}${window.location.hash}`],children:n})"#
+
+    public static func adapt(
+        _ data: Data,
+        resourceFilename: String
+    ) throws -> Data {
+        guard resourceFilename.hasPrefix(initialResourcePrefix),
+              resourceFilename.hasSuffix(".js"),
+              var source = String(data: data, encoding: .utf8),
+              source.components(separatedBy: releasedRouterEntry).count == 2
+        else {
+            return data
+        }
+
+        source = source.replacingOccurrences(
+            of: releasedRouterEntry,
+            with: iPadRouterEntry
+        )
+        guard let adapted = source.data(using: .utf8) else {
+            throw CodexDesktopWebViewHostError.invalidEntryDocumentEncoding
+        }
+        return adapted
+    }
+}
+
+/// Adds narrowly scoped renderer diagnostics for the physical-device voice
+/// acceptance test. This never changes the archived renderer on disk and is
+/// inert unless the UI test explicitly enables it for the served resources.
+public enum CodexDesktopIPadEntryResourceAdapter {
+    public static func adapt(_ data: Data) throws -> Data {
+        guard var source = String(data: data, encoding: .utf8) else {
+            throw CodexDesktopWebViewHostError.invalidEntryDocumentEncoding
+        }
+        let expression = try NSRegularExpression(
+            pattern: #"app-initial-([A-Za-z0-9_-]+)\.js"#
+        )
+        source = expression.stringByReplacingMatches(
+            in: source,
+            range: NSRange(source.startIndex..., in: source),
+            withTemplate: "app-initial-$1.js?codexPadRuntime=1"
+        )
+        guard let adapted = source.data(using: .utf8) else {
+            throw CodexDesktopWebViewHostError.invalidEntryDocumentEncoding
+        }
+        return adapted
+    }
+}
+
+public enum CodexDesktopVoiceDiagnosticEntryAdapter {
+    public static func adapt(
+        _ data: Data,
+        enabled: Bool
+    ) throws -> Data {
+        guard enabled,
+              var source = String(data: data, encoding: .utf8)
+        else {
+            return data
+        }
+
+        source = source.replacingOccurrences(
+            of: "?codexPadRuntime=1",
+            with: "?codexPadRuntime=1&codexVoiceDiagnostic=2"
+        )
+        guard let adapted = source.data(using: .utf8) else {
+            throw CodexDesktopWebViewHostError
+                .invalidEntryDocumentEncoding
+        }
+        return adapted
+    }
+}
+
+public enum CodexDesktopVoiceDiagnosticResourceAdapter {
+    private static let initialResourcePrefix = "app-initial-"
+    private static let overlayResourcePrefix =
+        "avatar-overlay-native-page-"
+    private static let initialAnchor =
+        "f=i?K9t(c,l):null;t.set(zx,f),"
+    private static let initialInstrumented =
+        #"f=i?K9t(c,l):null;window.webkit?.messageHandlers?.codexDesktopBridge?.postMessage({channel:`voice-debug-config-r${i?1:0}-p${f!=null?1:0}-n${c!=null&&typeof c==="object"?Object.keys(c).length:-1}`,payload:{}});t.set(zx,f),"#
+    private static let overlayImportAnchor =
+        "let{AvatarOverlayNativePage:e}=await import("
+    private static let overlayImportInstrumented =
+        #"window.webkit?.messageHandlers?.codexDesktopBridge?.postMessage({channel:`voice-debug-overlay-import`,payload:{}});let{AvatarOverlayNativePage:e}=await import("#
+    private static let overlayAnchor =
+        "(0,Q.useEffect)(Ue,R);"
+    private static let overlayInstrumented =
+        #"window.webkit?.messageHandlers?.codexDesktopBridge?.postMessage({channel:`voice-debug-register-c${j?1:0}-p${v!=null?1:0}-n${ne?1:0}-l${b?1:0}-w${Oe?1:0}-s${i.realtimeVoiceRuntime!=null?1:0}`,payload:{}});(0,Q.useEffect)(Ue,R);"#
+    private static let overlayDocumentProbe = #"""
+;(()=>{if(window.location.pathname!==`/avatar-overlay`)return;const p=(channel,payload)=>{try{window.webkit?.messageHandlers?.codexDesktopBridge?.postMessage({channel,payload})}catch{}};window.addEventListener(`error`,e=>p(`voice-debug-overlay-error`,{message:String(e?.message??``).slice(0,500),filename:String(e?.filename??``).split(`/`).pop()??``}));window.addEventListener(`unhandledrejection`,e=>p(`voice-debug-overlay-rejection`,{message:String(e?.reason?.stack??e?.reason??``).slice(0,1000)}));let count=0;const timer=window.setInterval(()=>{const root=document.querySelector(`#root`);p(`voice-debug-overlay-dom`,{count:++count,path:window.location.pathname,readyState:document.readyState,rootChildCount:root?.childElementCount??-1,rootHTMLLength:root?.innerHTML?.length??-1,bodyText:String(document.body?.innerText??``).slice(0,500),scripts:Array.from(document.scripts).map(e=>String(e.src).split(`/`).pop()).filter(Boolean).slice(-8)});if(count>=10)window.clearInterval(timer)},1000)})();
+"""#
+
+    public static func adapt(
+        _ data: Data,
+        resourceFilename: String,
+        enabled: Bool
+    ) throws -> Data {
+        guard enabled,
+              resourceFilename.hasSuffix(".js"),
+              var source = String(data: data, encoding: .utf8)
+        else {
+            return data
+        }
+
+        if resourceFilename.hasPrefix(initialResourcePrefix),
+           source.contains(initialAnchor) {
+            source = source.replacingOccurrences(
+                of: initialAnchor,
+                with: initialInstrumented
+            )
+            let overlayImportPattern =
+                #"\./avatar-overlay-native-page-[A-Za-z0-9_-]+\.js"#
+            let overlayImportExpression = try NSRegularExpression(
+                pattern: overlayImportPattern
+            )
+            source = overlayImportExpression.stringByReplacingMatches(
+                in: source,
+                range: NSRange(source.startIndex..., in: source),
+                withTemplate: "$0?codexVoiceDiagnostic=2"
+            )
+            source = source.replacingOccurrences(
+                of: overlayImportAnchor,
+                with: overlayImportInstrumented
+            )
+            // The released bundle ends in a sourceMappingURL line comment.
+            // Start the diagnostic on a fresh line so WebKit executes it.
+            source.append("\n")
+            source.append(overlayDocumentProbe)
+        } else if resourceFilename.hasPrefix(overlayResourcePrefix),
+                  source.contains(overlayAnchor) {
+            source = source.replacingOccurrences(
+                of: overlayAnchor,
+                with: overlayInstrumented
+            )
+        } else {
+            return data
+        }
+
+        guard let adapted = source.data(using: .utf8) else {
+            throw CodexDesktopWebViewHostError.invalidEntryDocumentEncoding
+        }
+        return adapted
+    }
+}
+
+/// Drives only the two released voice onboarding buttons when a physical
+/// diagnostic launch explicitly requests it. It is not installed in normal
+/// application launches.
+public enum CodexDesktopVoiceAutostartDiagnosticScript {
+    public static let source = #"""
+    (() => {
+      var primaryClicked = false;
+      var onboardingClicked = false;
+      const bridge = (channel) => window.webkit?.messageHandlers
+        ?.codexDesktopBridge?.postMessage({channel, payload: {}});
+      const clickButton = (labels) => {
+        const button = Array.from(document.querySelectorAll("button"))
+          .find((candidate) => {
+            const label = String(
+              candidate.getAttribute("aria-label")
+                || candidate.textContent
+                || ""
+            ).trim();
+            return labels.includes(label);
+          });
+        if (!button) return false;
+        button.click();
+        return true;
+      };
+      const timer = window.setInterval(() => {
+        if (!primaryClicked && clickButton([
+          "Start new voice chat",
+          "开始新的语音聊天"
+        ])) {
+          primaryClicked = true;
+          bridge("voice-debug-autostart-primary");
+          return;
+        }
+        if (primaryClicked && !onboardingClicked && clickButton([
+          "Start voice chat",
+          "开始语音聊天"
+        ])) {
+          onboardingClicked = true;
+          bridge("voice-debug-autostart-onboarding");
+          window.clearInterval(timer);
+        }
+      }, 500);
+      window.setTimeout(() => window.clearInterval(timer), 45_000);
+    })();
+    """#
+}
+
+/// Observes the released renderer's real microphone and WebRTC lifecycle on a
+/// physical iPad. The wrappers preserve the native objects and are installed
+/// only for an explicit voice diagnostic launch.
+public enum CodexDesktopVoiceWebRTCDiagnosticScript {
+    public static let source = #"""
+    (() => {
+      const bridge = (phase, payload = {}) => {
+        try {
+          window.webkit?.messageHandlers?.codexDesktopBridge?.postMessage({
+            channel: `voice-debug-webrtc-${phase}`,
+            payload
+          });
+        } catch {}
+      };
+      const describeError = (error) => ({
+        name: String(error?.name || ""),
+        message: String(error?.message || error || "").slice(0, 500)
+      });
+      const mediaDevices = navigator.mediaDevices;
+      if (mediaDevices?.getUserMedia) {
+        const nativeGetUserMedia = mediaDevices.getUserMedia.bind(mediaDevices);
+        mediaDevices.getUserMedia = async (...args) => {
+          bridge("gum-start", {audio: Boolean(args[0]?.audio)});
+          try {
+            const stream = await nativeGetUserMedia(...args);
+            bridge("gum-ok", {
+              audioTracks: stream.getAudioTracks().length,
+              trackStates: stream.getAudioTracks().map(track => track.readyState)
+            });
+            return stream;
+          } catch (error) {
+            bridge("gum-error", describeError(error));
+            throw error;
+          }
+        };
+      }
+      window.addEventListener("message", event => {
+        const message = event?.data;
+        if (message?.type !== "mcp-notification") return;
+        if (!String(message.method || "").startsWith("thread/realtime/")) return;
+        bridge("host-notification", {
+          hostId: String(message.hostId || ""),
+          method: String(message.method || ""),
+          threadId: String(message.params?.threadId || ""),
+          sdpLength: String(message.params?.sdp || "").length
+        });
+      }, true);
+      const NativePeerConnection = window.RTCPeerConnection;
+      if (!NativePeerConnection) {
+        bridge("unsupported");
+        return;
+      }
+      window.RTCPeerConnection = function(...args) {
+        const pc = new NativePeerConnection(...args);
+        bridge("created", {signalingState: pc.signalingState});
+        const snapshot = phase => bridge(phase, {
+          connectionState: pc.connectionState,
+          iceConnectionState: pc.iceConnectionState,
+          iceGatheringState: pc.iceGatheringState,
+          signalingState: pc.signalingState,
+          localSdpLength: pc.localDescription?.sdp?.length || 0,
+          remoteSdpLength: pc.remoteDescription?.sdp?.length || 0
+        });
+        pc.addEventListener("connectionstatechange", () => snapshot("connection"));
+        pc.addEventListener("iceconnectionstatechange", () => snapshot("ice-connection"));
+        pc.addEventListener("icegatheringstatechange", () => snapshot("ice-gathering"));
+        pc.addEventListener("signalingstatechange", () => snapshot("signaling"));
+        pc.addEventListener("icecandidateerror", event => bridge("ice-error", {
+          errorCode: Number(event.errorCode || 0),
+          errorText: String(event.errorText || "").slice(0, 300)
+        }));
+        const nativeSetLocalDescription = pc.setLocalDescription.bind(pc);
+        pc.setLocalDescription = async (...values) => {
+          try {
+            const result = await nativeSetLocalDescription(...values);
+            snapshot("local-description-ok");
+            return result;
+          } catch (error) {
+            bridge("local-description-error", describeError(error));
+            throw error;
+          }
+        };
+        const nativeSetRemoteDescription = pc.setRemoteDescription.bind(pc);
+        pc.setRemoteDescription = async (...values) => {
+          bridge("remote-description-start", {sdpLength: values[0]?.sdp?.length || 0});
+          try {
+            const result = await nativeSetRemoteDescription(...values);
+            snapshot("remote-description-ok");
+            return result;
+          } catch (error) {
+            bridge("remote-description-error", describeError(error));
+            throw error;
+          }
+        };
+        return pc;
+      };
+      window.RTCPeerConnection.prototype = NativePeerConnection.prototype;
+      Object.setPrototypeOf(window.RTCPeerConnection, NativePeerConnection);
+      bridge("installed");
+    })();
+    """#
+}
+
 public enum CodexDesktopWebViewAppResourceResolver {
     public static func entryRequestURL(
         contract: CodexDesktopWebViewContract = .official,
@@ -223,8 +568,17 @@ public enum CodexDesktopWebViewAppResourceResolver {
         var components = URLComponents()
         components.scheme = contract.applicationScheme
         components.host = contract.applicationHost
-        components.path = "/" + contract.entryFilename
-        if let initialRoute, !initialRoute.isEmpty {
+        if let initialRoute,
+           isReleasedDocumentRoute(initialRoute)
+        {
+            components.path = initialRoute
+        } else {
+            components.path = "/" + contract.entryFilename
+        }
+        if let initialRoute,
+           !initialRoute.isEmpty,
+           !isReleasedDocumentRoute(initialRoute)
+        {
             components.queryItems = [
                 URLQueryItem(
                     name: "initialRoute",
@@ -264,7 +618,9 @@ public enum CodexDesktopWebViewAppResourceResolver {
                 requestURL
             )
         }
-        let relativePath = String(decodedPath.dropFirst())
+        let relativePath = isReleasedDocumentRoute(decodedPath)
+            ? contract.entryFilename
+            : String(decodedPath.dropFirst())
         let pathComponents = relativePath.split(
             separator: "/",
             omittingEmptySubsequences: false
@@ -311,6 +667,17 @@ public enum CodexDesktopWebViewAppResourceResolver {
             fileURL: candidate,
             mimeType: mimeType(forPathExtension: candidate.pathExtension)
         )
+    }
+
+    private static func isReleasedDocumentRoute(_ path: String) -> Bool {
+        if path == "/avatar-overlay" {
+            return true
+        }
+        guard path.hasPrefix("/local/") else {
+            return false
+        }
+        let threadID = String(path.dropFirst("/local/".count))
+        return !threadID.isEmpty && !threadID.contains("/")
     }
 
     private static func mimeType(
@@ -491,9 +858,17 @@ public final class CodexDesktopLastActiveLocalThreadStore {
     }
 
     public func restoredInitialRoute(
-        threadExists: (String) -> Bool
+        threadExists: (String) -> Bool,
+        threadIsArchived: (String) -> Bool = { _ in false }
     ) -> String? {
         guard let threadID else {
+            return nil
+        }
+        guard !threadIsArchived(threadID) else {
+            clear(
+                source: "restore",
+                pathKind: "archived-thread"
+            )
             return nil
         }
         guard threadExists(threadID) else {
@@ -1624,6 +1999,96 @@ public final class CodexDesktopStatsigSummaryGateDiagnosticStore {
     }
 }
 
+/// Records only structural evidence for the released realtime-voice dynamic
+/// config. The config values may contain rollout metadata and prompts, so the
+/// diagnostic deliberately persists no field names or source payload bytes.
+public final class CodexDesktopStatsigVoiceConfigDiagnosticStore {
+    public static let key =
+        "codex.desktop.last-statsig-voice-config-diagnostic"
+    public static let configID = "1193530394"
+    public static let hashedConfigID = "729731510"
+
+    private let userDefaults: UserDefaults
+
+    public init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
+    }
+
+    public func record(response: CodexDesktopHostMessage) {
+        guard case let .fetchSuccess(_, status, _, body) = response,
+              (200 ..< 300).contains(status),
+              case let .object(responseFields) = body,
+              case let .string(payload)? = responseFields["statsigPayload"],
+              let payloadData = payload.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode(
+                  CodexJSONValue.self,
+                  from: payloadData
+              ),
+              case let .object(payloadFields) = decoded,
+              case let .object(configs)? = payloadFields["dynamic_configs"]
+        else {
+            persist(present: false, valuePresent: false, fieldCount: 0)
+            return
+        }
+
+        guard let config = configs[Self.configID]
+            ?? configs[Self.hashedConfigID]
+        else {
+            persist(present: false, valuePresent: false, fieldCount: 0)
+            return
+        }
+
+        let value: CodexJSONValue?
+        switch config {
+        case let .object(fields):
+            if let direct = fields["value"] {
+                value = direct
+            } else if let pointer = fields["v"],
+                      case let .object(values)? = payloadFields["values"]
+            {
+                let key: String?
+                switch pointer {
+                case let .string(pointerValue):
+                    key = pointerValue
+                case let .integer(pointerValue):
+                    key = String(pointerValue)
+                default:
+                    key = nil
+                }
+                value = key.flatMap { values[$0] }
+            } else {
+                value = nil
+            }
+        default:
+            value = nil
+        }
+
+        let fieldCount: Int
+        if case let .object(fields)? = value {
+            fieldCount = fields.count
+        } else {
+            fieldCount = 0
+        }
+        persist(
+            present: true,
+            valuePresent: value != nil,
+            fieldCount: fieldCount
+        )
+    }
+
+    private func persist(
+        present: Bool,
+        valuePresent: Bool,
+        fieldCount: Int
+    ) {
+        userDefaults.set(
+            "config=\(Self.configID) present=\(present) "
+                + "valuePresent=\(valuePresent) fields=\(fieldCount)",
+            forKey: Self.key
+        )
+    }
+}
+
 /// Observes the renderer-owned history stack without inventing navigation
 /// state on the native side. The actual committed pathname is sent through
 /// the same reply-capable WebKit bridge used by the released preload.
@@ -2586,10 +3051,20 @@ public enum CodexDesktopRendererLocationDiagnostic {
                         contract: contract
                     )
                 var data = try Data(contentsOf: resource.fileURL)
-                if requestURL.path == "/" + contract.entryFilename {
+                if resource.fileURL.lastPathComponent
+                    == contract.entryFilename,
+                   resource.mimeType == "text/html"
+                {
                     data = try CodexDesktopWebViewEntryDocument.prepare(
                         data,
                         contract: contract
+                    )
+                    data = try CodexDesktopIPadEntryResourceAdapter.adapt(data)
+                    data = try CodexDesktopVoiceDiagnosticEntryAdapter.adapt(
+                        data,
+                        enabled: ProcessInfo.processInfo.environment[
+                            "CODEXPAD_UI_TEST_VOICE_DIAGNOSTIC"
+                        ] == "1"
                     )
                 } else if resource.mimeType == "text/javascript" {
                     data = try CodexDesktopIPadLoginResourceAdapter.adapt(
@@ -2597,6 +3072,52 @@ public enum CodexDesktopRendererLocationDiagnostic {
                         resourceFilename:
                             resource.fileURL.lastPathComponent
                     )
+                    data = try CodexDesktopIPadLazyModuleResourceAdapter.adapt(
+                        data,
+                        resourceFilename:
+                            resource.fileURL.lastPathComponent
+                    )
+                    data = try CodexDesktopIPadMemoryRouterResourceAdapter.adapt(
+                        data,
+                        resourceFilename:
+                            resource.fileURL.lastPathComponent
+                    )
+                    let voiceDiagnosticEnabled =
+                        ProcessInfo.processInfo.environment[
+                            "CODEXPAD_UI_TEST_VOICE_DIAGNOSTIC"
+                        ] == "1"
+                    let beforeVoiceDiagnostic = data
+                    data = try CodexDesktopVoiceDiagnosticResourceAdapter.adapt(
+                        data,
+                        resourceFilename:
+                            resource.fileURL.lastPathComponent,
+                        enabled: voiceDiagnosticEnabled
+                    )
+                    if voiceDiagnosticEnabled {
+                        let filename = resource.fileURL.lastPathComponent
+                        let diagnostic: String?
+                        let key: String?
+                        if filename.hasPrefix("app-initial-") {
+                            diagnostic = filename + " adapted="
+                                + String(data != beforeVoiceDiagnostic)
+                            key = "codex.desktop.voice-served-initial"
+                        } else if filename.hasPrefix(
+                            "avatar-overlay-native-page-"
+                        ) {
+                            diagnostic = filename + " adapted="
+                                + String(data != beforeVoiceDiagnostic)
+                            key = "codex.desktop.voice-served-overlay"
+                        } else {
+                            diagnostic = nil
+                            key = nil
+                        }
+                        if let diagnostic, let key {
+                            UserDefaults.standard.set(
+                                diagnostic,
+                                forKey: key
+                            )
+                        }
+                    }
                 }
                 let response = URLResponse(
                     url: requestURL,
@@ -2637,7 +3158,8 @@ public enum CodexDesktopRendererLocationDiagnostic {
     @MainActor
 public final class CodexDesktopWebViewHost:
     NSObject,
-    WKNavigationDelegate
+    WKNavigationDelegate,
+    WKUIDelegate
 {
         /// Stable native accessibility state for the released surface.
         ///
@@ -2718,6 +3240,28 @@ public final class CodexDesktopWebViewHost:
                     )
                 )
             }
+            if ProcessInfo.processInfo.environment[
+                "CODEXPAD_UI_TEST_VOICE_AUTOSTART"
+            ] == "1" {
+                contentController.addUserScript(
+                    WKUserScript(
+                        source:
+                            CodexDesktopVoiceWebRTCDiagnosticScript.source,
+                        injectionTime: .atDocumentStart,
+                        forMainFrameOnly: true,
+                        in: .page
+                    )
+                )
+                contentController.addUserScript(
+                    WKUserScript(
+                        source:
+                            CodexDesktopVoiceAutostartDiagnosticScript.source,
+                        injectionTime: .atDocumentStart,
+                        forMainFrameOnly: true,
+                        in: .page
+                    )
+                )
+            }
             contentController.addScriptMessageHandler(
                 scriptHandler,
                 contentWorld: .page,
@@ -2750,6 +3294,7 @@ public final class CodexDesktopWebViewHost:
 
             scriptHandler.owner = self
             webView.navigationDelegate = self
+            webView.uiDelegate = self
             webView.onHardwareShortcut = { [weak self] shortcut in
                 self?.onHardwareShortcut?(shortcut)
             }
@@ -2786,7 +3331,11 @@ public final class CodexDesktopWebViewHost:
             appSchemeHandler.configure(
                 surfaceDirectoryURL: plan.readAccessURL
             )
-            webView.load(URLRequest(url: plan.requestURL))
+            webView.load(
+                CodexDesktopWebViewNavigationRequest.make(
+                    url: plan.requestURL
+                )
+            )
         }
 
         public func resourceVerificationFailed(
@@ -2884,6 +3433,26 @@ public final class CodexDesktopWebViewHost:
             } catch {
                 failRenderer(error)
             }
+        }
+
+        @available(iOS 15.0, *)
+        public func webView(
+            _: WKWebView,
+            requestMediaCapturePermissionFor _: WKSecurityOrigin,
+            initiatedByFrame _: WKFrameInfo,
+            type: WKMediaCaptureType,
+            decisionHandler: @escaping @MainActor
+                (WKPermissionDecision) -> Void
+        ) {
+            // The recovered renderer captures audio only after an explicit
+            // voice-button gesture. Its custom app:// origin cannot inherit
+            // Safari's per-site permission UI, so bridge that gesture to the
+            // app-level microphone permission handled by iPadOS.
+            guard type == .microphone else {
+                decisionHandler(.deny)
+                return
+            }
+            decisionHandler(.grant)
         }
 
         private func collectEntryDiagnostics() {

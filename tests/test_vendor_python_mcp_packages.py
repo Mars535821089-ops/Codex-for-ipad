@@ -42,6 +42,10 @@ PYTHON_XCFRAMEWORK = (
 class VendorPythonMCPPackagesTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        if not (PYTHON_XCFRAMEWORK / "ios-arm64").is_dir():
+            raise unittest.SkipTest(
+                "the optional Python XCFramework has not been bootstrapped"
+            )
         cls._native_directory = TemporaryDirectory()
         native_directory = Path(cls._native_directory.name)
         source = native_directory / "fixture.c"

@@ -3884,10 +3884,29 @@ public enum CodexDesktopInitialMCPRouter {
         )
 
         do {
-            let resumeResult = try threadResumer.resumeThread(
-                id: request.request.id,
-                params: params
-            )
+            let resumeResult: CodexThreadResumeResult
+            do {
+                resumeResult = try threadResumer.resumeThread(
+                    id: request.request.id,
+                    params: params
+                )
+            } catch {
+                guard let fallback =
+                    releasedHydrationFallbackParams(params)
+                else {
+                    throw error
+                }
+                // A renderer update may change its generated developer
+                // instructions or personality while an existing thread still
+                // carries the previous release's persisted values. The core
+                // correctly rejects that mismatch. Retry once using the
+                // thread's persisted volatile settings so the released UI
+                // does not enter an unbounded hydration loop.
+                resumeResult = try threadResumer.resumeThread(
+                    id: request.request.id,
+                    params: fallback
+                )
+            }
             return Self.result(
                 request,
                 value: try encodedThreadResult(resumeResult)
@@ -3905,6 +3924,30 @@ public enum CodexDesktopInitialMCPRouter {
                 message: "Thread session resuming failed"
             )
         }
+    }
+
+    private static func releasedHydrationFallbackParams(
+        _ params: CodexThreadResumeParams
+    ) -> CodexThreadResumeParams? {
+        guard case .null = params.model,
+              case .null = params.modelProvider,
+              case .value = params.cwd,
+              case .value = params.config,
+              case .value = params.developerInstructions
+        else {
+            return nil
+        }
+        switch params.personality {
+        case .value, .null:
+            break
+        case .omitted:
+            return nil
+        }
+
+        var fallback = params
+        fallback.developerInstructions = .omitted
+        fallback.personality = .omitted
+        return fallback
     }
 
     @MainActor

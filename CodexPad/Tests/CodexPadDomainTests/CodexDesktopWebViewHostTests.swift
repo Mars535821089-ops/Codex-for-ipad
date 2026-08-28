@@ -164,8 +164,35 @@ func desktopWebViewResourceLocatorCanOpenTheReleasedAvatarOverlayRoute()
     #expect(plan.readAccessURL == surface.standardizedFileURL)
     #expect(
         plan.requestURL.absoluteString
-            == "app://-/index.html?initialRoute=/avatar-overlay"
+            == "app://-/avatar-overlay"
     )
+}
+
+@Test
+func desktopWebViewResourceResolverServesEntryDocumentForReleasedRoutes()
+    throws
+{
+    let fileManager = FileManager.default
+    let root = fileManager.temporaryDirectory.appendingPathComponent(
+        UUID().uuidString,
+        isDirectory: true
+    )
+    try fileManager.createDirectory(
+        at: root,
+        withIntermediateDirectories: true
+    )
+    let entry = root.appendingPathComponent("index.html")
+    try Data("<!doctype html>".utf8).write(to: entry)
+    defer { try? fileManager.removeItem(at: root) }
+
+    for route in ["/avatar-overlay", "/local/thread-123"] {
+        let resource = try CodexDesktopWebViewAppResourceResolver.resolve(
+            requestURL: #require(URL(string: "app://-" + route)),
+            surfaceDirectoryURL: root
+        )
+        #expect(resource.fileURL == entry.standardizedFileURL)
+        #expect(resource.mimeType == "text/html")
+    }
 }
 
 @Test
@@ -288,6 +315,40 @@ func desktopLastActiveLocalThreadStoreRecordsRedactedAnchorTransitions()
 }
 
 @Test
+func desktopLastActiveLocalThreadStoreDoesNotRestoreArchivedThread()
+    throws
+{
+    let suiteName =
+        "CodexDesktopLastActiveLocalThreadStoreTests."
+        + UUID().uuidString
+    let defaults = try #require(
+        UserDefaults(suiteName: suiteName)
+    )
+    defer {
+        defaults.removePersistentDomain(forName: suiteName)
+    }
+    let store = CodexDesktopLastActiveLocalThreadStore(
+        userDefaults: defaults
+    )
+
+    store.recordDurableThreadID("thread-archived")
+
+    #expect(
+        store.restoredInitialRoute(
+            threadExists: { _ in true },
+            threadIsArchived: { $0 == "thread-archived" }
+        ) == nil
+    )
+    #expect(store.threadID == nil)
+    #expect(
+        defaults.string(
+            forKey:
+                CodexDesktopLastActiveLocalThreadStore.diagnosticKey
+        ) == "source=restore path=archived-thread anchor=missing"
+    )
+}
+
+@Test
 func desktopRestoredLocalThreadRouteFeedsTheReleasedInitialRouteQuery()
     throws
 {
@@ -316,7 +377,7 @@ func desktopRestoredLocalThreadRouteFeedsTheReleasedInitialRouteQuery()
 
     #expect(
         plan.requestURL.absoluteString
-            == "app://-/index.html?initialRoute=/local/thread-123"
+            == "app://-/local/thread-123"
     )
 }
 
@@ -924,6 +985,42 @@ func statsigSummaryGateDiagnosticReadsReleasedHashedV2Gate() throws {
             forKey: CodexDesktopStatsigSummaryGateDiagnosticStore.key
         ) == "gate=4128908571 present=true value=false"
     )
+}
+
+@Test
+func statsigVoiceConfigDiagnosticReadsReleasedHashedV2ConfigWithoutPayload()
+    throws
+{
+    let suiteName = "CodexDesktopStatsigVoiceConfigV2Tests.\(UUID())"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let statsigPayload = #"{"dynamic_configs":{"729731510":{"v":"voice-value"}},"values":{"voice-value":{"prompt":"private-prompt","greeting_enabled":true}},"token":"private-token"}"#
+    let store = CodexDesktopStatsigVoiceConfigDiagnosticStore(
+        userDefaults: defaults
+    )
+
+    store.record(
+        response: .fetchSuccess(
+            requestID: "statsig-bootstrap-v2",
+            status: 200,
+            headers: [:],
+            body: .object([
+                "statsigPayload": .string(statsigPayload)
+            ])
+        )
+    )
+
+    let diagnostic = try #require(
+        defaults.string(
+            forKey: CodexDesktopStatsigVoiceConfigDiagnosticStore.key
+        )
+    )
+    #expect(
+        diagnostic
+            == "config=1193530394 present=true valuePresent=true fields=2"
+    )
+    #expect(!diagnostic.contains("private-prompt"))
+    #expect(!diagnostic.contains("private-token"))
 }
 
 @Test
@@ -1617,4 +1714,159 @@ private func signature(
         String(binding.option),
         String(binding.control),
     ].joined(separator: ":")
+}
+@Test
+func voiceDiagnosticAdapterInstrumentsReleasedVoiceConfigAndRegistrationGate() throws {
+    let initial = Data(
+        "let f=i?K9t(c,l):null;t.set(zx,f),t.set(Z9t,m);"
+            .appending(
+                "let{AvatarOverlayNativePage:e}=await import("
+                    + "`./avatar-overlay-native-page-DJ_uSiqV.js`)"
+            ).utf8
+    )
+    let adaptedInitial = try CodexDesktopVoiceDiagnosticResourceAdapter.adapt(
+        initial,
+        resourceFilename: "app-initial-BnNjcVmf.js",
+        enabled: true
+    )
+    let initialSource = try #require(String(data: adaptedInitial, encoding: .utf8))
+    #expect(initialSource.contains("voice-debug-config-r${i?1:0}"))
+    #expect(initialSource.contains("-p${f!=null?1:0}"))
+    #expect(
+        initialSource.contains(
+            "avatar-overlay-native-page-DJ_uSiqV.js?codexVoiceDiagnostic=2"
+        )
+    )
+    #expect(initialSource.contains("voice-debug-overlay-import"))
+    #expect(initialSource.contains("voice-debug-overlay-dom"))
+    #expect(initialSource.contains("voice-debug-overlay-error"))
+    #expect(initialSource.contains("voice-debug-overlay-rejection"))
+    #expect(initialSource.contains("\n;(()=>{if(window.location.pathname"))
+
+    let overlay = Data(
+        "let R;e[45]!==Oe?(R=[Oe,j]):R=e[47],(0,Q.useEffect)(Ue,R);let We=1".utf8
+    )
+    let adaptedOverlay = try CodexDesktopVoiceDiagnosticResourceAdapter.adapt(
+        overlay,
+        resourceFilename: "avatar-overlay-native-page-DJ_uSiqV.js",
+        enabled: true
+    )
+    let overlaySource = try #require(String(data: adaptedOverlay, encoding: .utf8))
+    #expect(overlaySource.contains("voice-debug-register-c${j?1:0}"))
+    #expect(overlaySource.contains("-l${b?1:0}"))
+    #expect(overlaySource.contains("-s${i.realtimeVoiceRuntime!=null?1:0}"))
+
+    #expect(
+        try CodexDesktopVoiceDiagnosticResourceAdapter.adapt(
+            overlay,
+            resourceFilename: "avatar-overlay-native-page-DJ_uSiqV.js",
+            enabled: false
+        ) == overlay
+    )
+}
+
+@Test
+func voiceDiagnosticEntryAdapterCacheBustsTheReleasedInitialModule() throws {
+    let entry = Data(
+        #"<script type="module" src="/assets/app-initial-BnNjcVmf.js"></script>"#.utf8
+    )
+
+    let iPadEntry = try CodexDesktopIPadEntryResourceAdapter.adapt(entry)
+    let adapted = try CodexDesktopVoiceDiagnosticEntryAdapter.adapt(
+        iPadEntry,
+        enabled: true
+    )
+    let source = try #require(String(data: adapted, encoding: .utf8))
+    #expect(
+        source.contains(
+            "app-initial-BnNjcVmf.js?codexPadRuntime=1&codexVoiceDiagnostic=2"
+        )
+    )
+    #expect(
+        try CodexDesktopVoiceDiagnosticEntryAdapter.adapt(
+            iPadEntry,
+            enabled: false
+        ) == iPadEntry
+    )
+}
+
+@Test
+func iPadEntryAdapterVersionsTheReleasedInitialModule() throws {
+    let entry = Data(
+        #"<script type="module" src="/assets/app-initial-BnNjcVmf.js"></script>"#.utf8
+    )
+    let adapted = try CodexDesktopIPadEntryResourceAdapter.adapt(entry)
+    let source = try #require(String(data: adapted, encoding: .utf8))
+    #expect(source.contains("app-initial-BnNjcVmf.js?codexPadRuntime=1"))
+}
+
+@Test
+func desktopWebViewNavigationRequestReloadsBundledEntryDocument() throws {
+    let url = try #require(URL(string: "app://-/avatar-overlay"))
+    let request = CodexDesktopWebViewNavigationRequest.make(url: url)
+    #expect(request.url == url)
+    #expect(request.cachePolicy == .reloadIgnoringLocalCacheData)
+}
+
+@Test
+func iPadLazyModuleAdapterDoesNotBlockImportOnStylesheetLoadEvents() throws {
+    let released = Data(
+        #"if(r)return new Promise((e,n)=>{i.addEventListener(`load`,e),i.addEventListener(`error`,()=>n(Error(`Unable to preload CSS for ${t}`)))})"#.utf8
+    )
+    let adapted = try CodexDesktopIPadLazyModuleResourceAdapter.adapt(
+        released,
+        resourceFilename: "app-initial-BnNjcVmf.js"
+    )
+    let source = try #require(String(data: adapted, encoding: .utf8))
+    #expect(source.contains("if(r)return"))
+    #expect(!source.contains("if(r)return new Promise"))
+}
+
+@Test
+func iPadMemoryRouterAdapterStartsOverlayWebViewAtItsRequestedRoute() throws {
+    let released = Data(
+        "function kdu(e){let t=(0,Rdu.c)(6),{children:n}=e,r;"
+            .appending(
+                "return t[4]===n?r=t[5]:"
+                    + "(r=(0,Z9.jsx)(_Vs,{children:n}),t[4]=n,t[5]=r),r}"
+            ).utf8
+    )
+
+    let adapted = try CodexDesktopIPadMemoryRouterResourceAdapter.adapt(
+        released,
+        resourceFilename: "app-initial-BnNjcVmf.js"
+    )
+    let source = try #require(String(data: adapted, encoding: .utf8))
+
+    #expect(
+        source.contains(
+            "initialEntries:[window.location.pathname===`/index.html`"
+        )
+    )
+    #expect(source.contains("window.location.search"))
+    #expect(source.contains("window.location.hash"))
+    #expect(source.contains("children:n"))
+}
+
+@Test
+func voiceAutostartDiagnosticScriptUsesOnlyReleasedVoiceControls() {
+    let source = CodexDesktopVoiceAutostartDiagnosticScript.source
+    #expect(source.contains("let primaryClicked") == false)
+    #expect(source.contains("let onboardingClicked") == false)
+    #expect(source.contains("var primaryClicked = false"))
+    #expect(source.contains("var onboardingClicked = false"))
+    #expect(source.contains("Start new voice chat"))
+    #expect(source.contains("开始新的语音聊天"))
+    #expect(source.contains("Start voice chat"))
+    #expect(source.contains("voice-debug-autostart-onboarding"))
+}
+
+@Test
+func voiceWebRTCDiagnosticScriptObservesRealtimeHostNotifications() {
+    let source = CodexDesktopVoiceWebRTCDiagnosticScript.source
+    #expect(source.contains("host-notification"))
+    #expect(source.contains("mcp-notification"))
+    #expect(source.contains("thread/realtime/"))
+    #expect(source.contains("message.params?.threadId"))
+    #expect(source.contains("message.params?.sdp"))
 }

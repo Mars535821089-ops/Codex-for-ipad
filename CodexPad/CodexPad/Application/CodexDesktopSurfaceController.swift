@@ -934,18 +934,107 @@
                 },
                 notificationSink: {
                     [weak self] method, params in
-                    await self?.send(
-                        .mcpNotification(
-                            hostID: "local",
-                            method: method,
-                            params: params,
-                            metadata: [:]
-                        )
+                    let message = CodexDesktopHostMessage.mcpNotification(
+                        hostID: "local",
+                        method: method,
+                        params: params,
+                        metadata: [:]
                     )
+                    await self?.broadcastRealtimeNotification(message)
+                    // WebKit does not reliably deliver a host JavaScript call
+                    // re-entrantly while the renderer is still awaiting the
+                    // native reply to `thread/realtime/start`. Electron's IPC
+                    // queues this notification naturally. Replay only the SDP
+                    // after that request has unwound so the released renderer
+                    // can apply the answer to its pending peer connection.
+                    if method == "thread/realtime/sdp" {
+                        Task { @MainActor [weak self] in
+                            try? await Task.sleep(
+                                for: .milliseconds(300)
+                            )
+                            await self?.send(
+                                .mcpNotification(
+                                    hostID: "local",
+                                    method: method,
+                                    params: params,
+                                    metadata: [:]
+                                )
+                            )
+                        }
+                    }
                     await MainActor.run { [weak self] in
-                        self?.record(
-                            "mcp-notification \(method)"
+                        guard let self else { return }
+                        let realtimeTimestamp = Int64(
+                            Date().timeIntervalSince1970 * 1_000
                         )
+                        self.userDefaults.set(
+                            method,
+                            forKey:
+                                "codex.desktop.last-realtime-notification-method"
+                        )
+                        self.userDefaults.set(
+                            realtimeTimestamp,
+                            forKey:
+                                "codex.desktop.last-realtime-notification-timestamp-ms"
+                        )
+                        if method == "thread/realtime/sdp" {
+                            if case let .object(fields) = params {
+                                let threadID: String
+                                if case let .string(value)? = fields["threadId"] {
+                                    threadID = value
+                                } else {
+                                    threadID = ""
+                                }
+                                let sdpLength: Int
+                                if case let .string(value)? = fields["sdp"] {
+                                    sdpLength = value.count
+                                } else {
+                                    sdpLength = 0
+                                }
+                                self.record(
+                                    "realtime-sdp-send thread="
+                                        + threadID
+                                        + " length=\(sdpLength)"
+                                )
+                            }
+                            self.userDefaults.removeObject(
+                                forKey:
+                                    "codex.desktop.last-realtime-error-message"
+                            )
+                            self.userDefaults.removeObject(
+                                forKey:
+                                    "codex.desktop.last-realtime-closed-timestamp-ms"
+                            )
+                        } else if method == "thread/realtime/started" {
+                            self.userDefaults.set(
+                                realtimeTimestamp,
+                                forKey:
+                                    "codex.desktop.last-realtime-started-timestamp-ms"
+                            )
+                        } else if method == "thread/realtime/closed" {
+                            self.userDefaults.set(
+                                realtimeTimestamp,
+                                forKey:
+                                    "codex.desktop.last-realtime-closed-timestamp-ms"
+                            )
+                        }
+                        var diagnostic =
+                            "mcp-notification \(method)"
+                        if method == "thread/realtime/error",
+                           case let .object(fields) = params,
+                           case let .string(message)? =
+                               fields["message"]
+                        {
+                            diagnostic +=
+                                " message="
+                                + String(message.prefix(512))
+                            self.userDefaults.set(
+                                String(message.prefix(512)),
+                                forKey:
+                                    "codex.desktop.last-realtime-error-message"
+                            )
+                        }
+                        self.record(diagnostic)
                     }
                 }
             )
@@ -1598,8 +1687,21 @@
                 Task { @MainActor in
                     if event == .rendererReady {
                         self.record("avatar-overlay renderer-ready")
+                        if overlayHost.state == .awaitingHomeData {
+                            do {
+                                try overlayHost.markHomeDataLoaded()
+                                self.record(
+                                    "avatar-overlay home-data-ready"
+                                )
+                            } catch {
+                                self.recordFailure(error)
+                            }
+                        }
                     } else {
-                        await self.handle(event)
+                        await self.handle(
+                            event,
+                            replyHost: overlayHost
+                        )
                     }
                 }
             }
@@ -1612,6 +1714,13 @@
                     == CodexDesktopRendererRouteObservationScript
                         .messageChannel
                 {
+                    if case let .object(fields) = payload,
+                       case let .string(path)? = fields["path"]
+                    {
+                        self.record(
+                            "avatar-overlay renderer-route \(path)"
+                        )
+                    }
                     return nil
                 }
                 return try await self.handleNativeChannel(
@@ -2082,6 +2191,8 @@
                 )
             let callbackDispatcher =
                 CodexDesktopAppHostCallbackDispatcher()
+            let realtimeRuntimeCoordinator =
+                CodexDesktopRealtimeAppHostService.RuntimeCoordinator()
             let archiveBackend =
                 CodexDesktopLocalProjectArchiveBackend(
                     threadMutator: sessionStore
@@ -2508,11 +2619,55 @@
                                     isDirectory: true
                                 ),
                             eventHandler: {
-                                [weak self] service, method, _ in
+                                [weak self] service, method, arguments in
                                 await MainActor.run {
                                     self?.record(
                                         "app-host realtime "
                                             + "\(service).\(method)"
+                                    )
+                                }
+                                guard service == "realtimeVoiceRuntime"
+                                else {
+                                    return
+                                }
+                                if method == "requestRealtimeStart" {
+                                    await MainActor.run {
+                                        do {
+                                            try self?
+                                                .presentAvatarOverlayIfNeeded()
+                                        } catch {
+                                            self?.recordFailure(error)
+                                        }
+                                    }
+                                } else if method == "launchStateChanged",
+                                          case let .object(payload)? =
+                                              arguments?.first
+                                {
+                                    guard
+                                        case let .string(launchID)? =
+                                            payload["launchId"],
+                                        case let .string(phase)? = payload["phase"]
+                                    else {
+                                        return
+                                    }
+                                    let error: CodexJSONValue
+                                    if case let .string(message)? =
+                                        payload["error"]
+                                    {
+                                        error = .string(message)
+                                    } else {
+                                        error = .null
+                                    }
+                                    await self?.send(
+                                        .event(
+                                            type:
+                                                "realtime-voice-launch-state-changed",
+                                            payload: .object([
+                                                "launchId": .string(launchID),
+                                                "phase": .string(phase),
+                                                "error": error,
+                                            ])
+                                        )
                                     )
                                 }
                             },
@@ -2523,7 +2678,9 @@
                                     callbackID: callbackID,
                                     arguments: arguments
                                 )
-                            }
+                            },
+                            runtimeCoordinator:
+                                realtimeRuntimeCoordinator
                         )
                     let browsingStateService =
                         CodexDesktopBrowsingStateAppHostService(
@@ -3263,25 +3420,35 @@
                 try Task.checkCancellation()
                 let initialRoute =
                     lastActiveLocalThreadStore
-                        .restoredInitialRoute { [sessionStore] threadID in
-                            do {
-                                _ = try sessionStore.readThread(
-                                    id: .string(
-                                        "restore-last-active-"
-                                            + UUID().uuidString
-                                                .lowercased()
-                                    ),
-                                    params: CodexThreadReadParams(
-                                        threadID:
-                                            CodexStoredThreadID(threadID),
-                                        includeTurns: false
+                        .restoredInitialRoute(
+                            threadExists: { [sessionStore] threadID in
+                                do {
+                                    _ = try sessionStore.readThread(
+                                        id: .string(
+                                            "restore-last-active-"
+                                                + UUID().uuidString
+                                                    .lowercased()
+                                        ),
+                                        params: CodexThreadReadParams(
+                                            threadID:
+                                                CodexStoredThreadID(threadID),
+                                            includeTurns: false
+                                        )
                                     )
-                                )
-                                return true
-                            } catch {
-                                return false
+                                    return true
+                                } catch {
+                                    return false
+                                }
+                            },
+                            threadIsArchived: { [sessionStore] threadID in
+                                guard let id = UUID(uuidString: threadID)
+                                else {
+                                    return false
+                                }
+                                return sessionStore.state.archivedThreadIDs
+                                    .contains(id)
                             }
-                        }
+                        )
                 pendingRestoredInitialRoute = initialRoute
                 let plan =
                     try CodexDesktopWebViewResourceLocator.resolve(
@@ -3324,7 +3491,8 @@
         }
 
         private func handle(
-            _ event: CodexDesktopWebViewInboundEvent
+            _ event: CodexDesktopWebViewInboundEvent,
+            replyHost: CodexDesktopWebViewHost? = nil
         ) async {
             if case let .nativeChannel(name, payload) = event,
                name == CodexDesktopInteractiveSurfaceProbe.channel,
@@ -3460,7 +3628,7 @@
                             )
                     }
                 }
-                await send(response)
+                await send(response, replyingTo: replyHost)
                 if !request.isVSCodeHostRequest {
                     recordNetworkFetchMessage(
                         request: request,
@@ -3684,7 +3852,7 @@
                     }
                 }
                 for message in routed.preResponseMessages {
-                    await send(message)
+                    await send(message, replyingTo: replyHost)
                 }
                 if request.request.method == "account/logout" {
                     // Desktop publishes the auth-state transition while the
@@ -3692,13 +3860,13 @@
                     // race, the renderer navigates to /login against stale
                     // auth state and its guard immediately restores home.
                     for message in routed.postResponseMessages {
-                        await send(message)
+                        await send(message, replyingTo: replyHost)
                     }
-                    await send(routed.response)
+                    await send(routed.response, replyingTo: replyHost)
                 } else {
-                    await send(routed.response)
+                    await send(routed.response, replyingTo: replyHost)
                     for message in routed.postResponseMessages {
-                        await send(message)
+                        await send(message, replyingTo: replyHost)
                     }
                 }
                 if request.request.method == "fs/readFile" {
@@ -3752,7 +3920,8 @@
                                 persistedAtoms.snapshot
                             )
                         ])
-                    )
+                    ),
+                    replyingTo: replyHost
                 )
                 record("persisted-atom-sync")
 
@@ -4381,9 +4550,10 @@
                 CodexDesktopStatsigSummaryGateDiagnosticStore(
                     userDefaults: userDefaults
                 ).record(response: response)
+                CodexDesktopStatsigVoiceConfigDiagnosticStore(
+                    userDefaults: userDefaults
+                ).record(response: response)
             }
-            let status: Int
-            let errorCode: String?
             switch response {
             case let .fetchSuccess(_, status, _, _):
                 self.recordNetworkFetchDiagnostic(
@@ -4549,6 +4719,34 @@
                 record("worker-message \(workerID)")
                 return nil
             default:
+                if ProcessInfo.processInfo.environment[
+                    "CODEXPAD_UI_TEST_VOICE_DIAGNOSTIC"
+                ] == "1",
+                   name.hasPrefix("voice-debug-")
+                {
+                    if name.hasPrefix("voice-debug-webrtc-") {
+                        let entry =
+                            name + " " + Self.compactDescription(payload)
+                        var history = userDefaults.stringArray(
+                            forKey:
+                                "codex.desktop.voice-webrtc-diagnostics"
+                        ) ?? []
+                        history.append(entry)
+                        if history.count > 100 {
+                            history.removeFirst(history.count - 100)
+                        }
+                        userDefaults.set(
+                            history,
+                            forKey:
+                                "codex.desktop.voice-webrtc-diagnostics"
+                        )
+                    }
+                    record(
+                        "voice-diagnostic \(name) "
+                            + Self.compactDescription(payload)
+                    )
+                    return nil
+                }
                 record("unhandled-native-channel \(name)")
                 return nil
             }
@@ -4567,6 +4765,40 @@
                 {
                     recordStreamMessage(message)
                 }
+            } catch {
+                recordFailure(error)
+            }
+        }
+
+        /// Realtime voice is owned by the released avatar-overlay renderer,
+        /// while the primary renderer still owns the conversation surface.
+        /// Electron broadcasts app-server notifications to both renderer
+        /// contexts; mirror that behavior so the overlay's PeerConnection can
+        /// consume SDP and subsequent realtime transcript/session events.
+        private func broadcastRealtimeNotification(
+            _ message: CodexDesktopHostMessage
+        ) async {
+            await send(message)
+            guard let avatarOverlayHost else {
+                return
+            }
+            do {
+                try await avatarOverlayHost.send(message)
+            } catch {
+                recordFailure(error)
+            }
+        }
+
+        private func send(
+            _ message: CodexDesktopHostMessage,
+            replyingTo replyHost: CodexDesktopWebViewHost?
+        ) async {
+            guard let replyHost else {
+                await send(message)
+                return
+            }
+            do {
+                try await replyHost.send(message)
             } catch {
                 recordFailure(error)
             }
@@ -6018,9 +6250,15 @@
 
         private func record(_ message: String) {
             diagnostics.append(message)
-            if diagnostics.count > 200 {
+            // Realtime voice startup spans the primary renderer, the native
+            // avatar-overlay host, Statsig/bootstrap fetches, and several MCP
+            // requests. Two hundred entries can evict the initiating
+            // request and starter-registration evidence before a physical
+            // device assertion reads this trace. Keep a bounded but complete
+            // startup window so the failing boundary remains observable.
+            if diagnostics.count > 1_000 {
                 diagnostics.removeFirst(
-                    diagnostics.count - 200
+                    diagnostics.count - 1_000
                 )
             }
             logger.info("\(message, privacy: .public)")

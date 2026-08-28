@@ -11,6 +11,154 @@ public actor CodexDesktopRealtimeAppHostService {
     public typealias CallbackInvoker =
         @Sendable (Int, [Value]) async throws -> Void
 
+    /// The desktop main process coordinates realtime startup across two
+    /// renderer AppHost ports: the primary surface requests a launch and the
+    /// avatar-overlay surface later registers the callback that creates the
+    /// session. Keep that state outside either port-scoped service instance.
+    public actor RuntimeCoordinator {
+        public init() {}
+
+        private struct Starter: Sendable {
+            let request: Int
+            let cancel: Int
+            let ready: Bool
+            let callbackInvoker: CallbackInvoker
+        }
+
+        private struct PendingStart: Sendable {
+            let request: Value
+            let launchID: String?
+            let eventHandler: EventHandler
+        }
+
+        private var starter: Starter?
+        private var pendingStart: PendingStart?
+
+        func register(
+            request: Int,
+            cancel: Int,
+            ready: Bool,
+            callbackInvoker: @escaping CallbackInvoker
+        ) {
+            starter = Starter(
+                request: request,
+                cancel: cancel,
+                ready: ready,
+                callbackInvoker: callbackInvoker
+            )
+            startPendingIfReady()
+        }
+
+        func unregister(request: Int, cancel: Int) {
+            guard starter?.request == request,
+                  starter?.cancel == cancel
+            else {
+                return
+            }
+            starter = nil
+        }
+
+        func requestStart(
+            request: Value,
+            launchID: String?,
+            eventHandler: @escaping EventHandler
+        ) async throws {
+            if let starter, starter.ready {
+                try await run(
+                    starter: starter,
+                    pending: PendingStart(
+                        request: request,
+                        launchID: launchID,
+                        eventHandler: eventHandler
+                    )
+                )
+                return
+            }
+            pendingStart = PendingStart(
+                request: request,
+                launchID: launchID,
+                eventHandler: eventHandler
+            )
+            await eventHandler(
+                "realtimeVoiceRuntime",
+                "requestRealtimeStart",
+                [request] + (launchID.map { [.string($0)] } ?? [])
+            )
+        }
+
+        func cancel(
+            eventHandler: @escaping EventHandler
+        ) async throws {
+            pendingStart = nil
+            guard let starter else {
+                await eventHandler(
+                    "realtimeVoiceRuntime",
+                    "cancelRealtimeSessionStart",
+                    []
+                )
+                return
+            }
+            try await starter.callbackInvoker(starter.cancel, [])
+        }
+
+        private func startPendingIfReady() {
+            guard let starter, starter.ready, let pendingStart else {
+                return
+            }
+            self.pendingStart = nil
+            Task {
+                try? await self.run(
+                    starter: starter,
+                    pending: pendingStart
+                )
+            }
+        }
+
+        private func run(
+            starter: Starter,
+            pending: PendingStart
+        ) async throws {
+            do {
+                try await starter.callbackInvoker(
+                    starter.request,
+                    [pending.request]
+                )
+                await publishLaunchState(
+                    phase: "connected",
+                    pending: pending,
+                    error: nil
+                )
+            } catch {
+                await publishLaunchState(
+                    phase: "failed",
+                    pending: pending,
+                    error: String(describing: error)
+                )
+                throw error
+            }
+        }
+
+        private func publishLaunchState(
+            phase: String,
+            pending: PendingStart,
+            error: String?
+        ) async {
+            guard let launchID = pending.launchID else {
+                return
+            }
+            var payload: [String: Value] = [
+                "launchId": .string(launchID),
+                "phase": .string(phase),
+            ]
+            payload["error"] = error.map(Value.string) ?? .null
+            await pending.eventHandler(
+                "realtimeVoiceRuntime",
+                "launchStateChanged",
+                [.object(payload)]
+            )
+        }
+    }
+
     public enum Error: Swift.Error, Equatable, Sendable {
         case invalidArguments
         case unsupportedMethod(service: String, method: String)
@@ -56,7 +204,9 @@ public actor CodexDesktopRealtimeAppHostService {
     private let codexHome: URL
     private let eventHandler: EventHandler
     private let callbackInvoker: CallbackInvoker?
+    private let runtimeCoordinator: RuntimeCoordinator
     private var voiceClaim: VoiceClaim?
+    private var voiceSubscribers: Set<Int> = []
     private var multiAgentActivities: [String: [Value]] = [:]
     private var registeredPresentationSurfaces: Set<String> = []
     private var requestedPresentation: Value?
@@ -65,11 +215,13 @@ public actor CodexDesktopRealtimeAppHostService {
     public init(
         codexHome: URL,
         eventHandler: EventHandler? = nil,
-        callbackInvoker: CallbackInvoker? = nil
+        callbackInvoker: CallbackInvoker? = nil,
+        runtimeCoordinator: RuntimeCoordinator = RuntimeCoordinator()
     ) {
         self.codexHome = codexHome
         self.eventHandler = eventHandler ?? { _, _, _ in }
         self.callbackInvoker = callbackInvoker
+        self.runtimeCoordinator = runtimeCoordinator
     }
 
     public func invoke(
@@ -89,13 +241,15 @@ public actor CodexDesktopRealtimeAppHostService {
         case ("realtimeVoice", "claim"):
             return try claimVoice(arguments)
         case ("realtimeVoice", "publish"):
-            try publishVoice(arguments)
+            try await publishVoice(arguments)
             return .undefined
         case ("realtimeVoice", "transfer"):
             return try await transferVoice(arguments)
         case ("realtimeVoice", "cancelTransfer"):
             _ = try locator(arguments?.first)
             voiceClaim = nil
+            requestedPresentation = nil
+            await notifyVoiceSubscribers()
             await eventHandler(service, method, arguments)
             return .undefined
         case ("realtimeVoice", "setDictationActive"):
@@ -105,7 +259,7 @@ public actor CodexDesktopRealtimeAppHostService {
             await eventHandler(service, method, arguments)
             return .undefined
         case ("realtimeVoice", "release"):
-            try releaseVoice(arguments)
+            try await releaseVoice(arguments)
             return .undefined
         case ("realtimeVoice", "control"):
             return try await controlVoice(arguments)
@@ -116,6 +270,7 @@ public actor CodexDesktopRealtimeAppHostService {
         case ("realtimeVoice", "getSnapshot"):
             return voiceSnapshot()
         case ("realtimeVoice", "subscribe"):
+            try await subscribeToVoice(arguments)
             await eventHandler(service, method, arguments)
             return subscriptionTarget()
 
@@ -145,7 +300,7 @@ public actor CodexDesktopRealtimeAppHostService {
             return subscriptionTarget()
 
         case ("realtimeVoiceRuntime", "registerRealtimeStarter"):
-            try registerRealtimeStarter(arguments)
+            try await registerRealtimeStarter(arguments)
             await eventHandler(service, method, arguments)
             return .undefined
         case ("realtimeVoiceRuntime", "requestRealtimeStart"):
@@ -158,6 +313,12 @@ public actor CodexDesktopRealtimeAppHostService {
             await eventHandler(service, method, arguments)
             return .undefined
         case ("realtimeVoiceRuntime", "unregisterRealtimeStarter"):
+            if let realtimeStarter {
+                await runtimeCoordinator.unregister(
+                    request: realtimeStarter.request,
+                    cancel: realtimeStarter.cancel
+                )
+            }
             realtimeStarter = nil
             await eventHandler(service, method, arguments)
             return .undefined
@@ -326,7 +487,7 @@ public actor CodexDesktopRealtimeAppHostService {
 
     private func publishVoice(
         _ arguments: [Value]?
-    ) throws {
+    ) async throws {
         guard let arguments,
               arguments.count >= 2,
               let claimID = string(arguments[0]),
@@ -358,17 +519,19 @@ public actor CodexDesktopRealtimeAppHostService {
         ])
         claim.published = true
         voiceClaim = claim
+        await notifyVoiceSubscribers()
     }
 
     private func releaseVoice(
         _ arguments: [Value]?
-    ) throws {
+    ) async throws {
         guard let claimID = string(arguments?.first) else {
             throw Error.invalidArguments
         }
         if voiceClaim?.id == claimID {
             voiceClaim = nil
             requestedPresentation = nil
+            await notifyVoiceSubscribers()
         }
     }
 
@@ -400,6 +563,7 @@ public actor CodexDesktopRealtimeAppHostService {
         guard let destination else {
             voiceClaim = nil
             requestedPresentation = nil
+            await notifyVoiceSubscribers()
             await eventHandler("realtimeVoice", "transfer", arguments)
             return .bool(true)
         }
@@ -409,6 +573,7 @@ public actor CodexDesktopRealtimeAppHostService {
             claim.snapshot = .object(snapshot)
         }
         voiceClaim = claim
+        await notifyVoiceSubscribers()
         await eventHandler("realtimeVoice", "transfer", arguments)
         return .bool(true)
     }
@@ -436,12 +601,47 @@ public actor CodexDesktopRealtimeAppHostService {
             to: claim.snapshot
         )
         voiceClaim = claim
+        await notifyVoiceSubscribers()
         await eventHandler(
             "realtimeVoice",
             "control",
             [requestedLocator, .object(control)]
         )
         return .bool(true)
+    }
+
+    private func subscribeToVoice(
+        _ arguments: [Value]?
+    ) async throws {
+        guard case let .import(callbackID)? = arguments?.first,
+              callbackID != 0,
+              let callbackInvoker
+        else {
+            throw Error.invalidArguments
+        }
+        voiceSubscribers.insert(callbackID)
+        do {
+            try await callbackInvoker(callbackID, [voiceSnapshot()])
+        } catch {
+            voiceSubscribers.remove(callbackID)
+            throw error
+        }
+    }
+
+    private func notifyVoiceSubscribers() async {
+        guard let callbackInvoker, !voiceSubscribers.isEmpty else {
+            return
+        }
+        let snapshot = voiceSnapshot()
+        var failed: [Int] = []
+        for callbackID in voiceSubscribers {
+            do {
+                try await callbackInvoker(callbackID, [snapshot])
+            } catch {
+                failed.append(callbackID)
+            }
+        }
+        voiceSubscribers.subtract(failed)
     }
 
     private func controlActiveVoice(
@@ -623,29 +823,37 @@ public actor CodexDesktopRealtimeAppHostService {
 
     private func registerRealtimeStarter(
         _ arguments: [Value]?
-    ) throws {
+    ) async throws {
         guard let arguments,
               arguments.count >= 2,
               case let .import(requestCallback) = arguments[0],
               case let .import(cancelCallback) = arguments[1],
-              requestCallback >= 0,
-              cancelCallback >= 0
+              requestCallback != 0,
+              cancelCallback != 0
         else {
             throw Error.invalidArguments
         }
-        if arguments.count > 2,
-           case .bool = arguments[2]
-        {
-            // The released surface passes its presentation-enabled flag as
-            // the third argument. It is intentionally not part of callback
-            // identity, but must retain the wire-level type contract.
-        } else if arguments.count > 2 {
-            throw Error.invalidArguments
+        let ready: Bool
+        if arguments.count > 2 {
+            guard case let .bool(workspaceReady) = arguments[2] else {
+                throw Error.invalidArguments
+            }
+            ready = workspaceReady
+        } else {
+            ready = true
         }
         realtimeStarter = (
             request: requestCallback,
             cancel: cancelCallback
         )
+        if let callbackInvoker {
+            await runtimeCoordinator.register(
+                request: requestCallback,
+                cancel: cancelCallback,
+                ready: ready,
+                callbackInvoker: callbackInvoker
+            )
+        }
     }
 
     private func requestRealtimeStart(
@@ -655,22 +863,17 @@ public actor CodexDesktopRealtimeAppHostService {
               let request = arguments.first,
               arguments.count <= 2,
               arguments.dropFirst().allSatisfy({
-                  $0 == .null || string($0) != nil
+                  $0 == .undefined || $0 == .null || string($0) != nil
               })
         else {
             throw Error.invalidArguments
         }
-        guard let starter = realtimeStarter,
-              let callbackInvoker
-        else {
-            await eventHandler(
-                "realtimeVoiceRuntime",
-                "requestRealtimeStart",
-                arguments
-            )
-            return
-        }
-        try await callbackInvoker(starter.request, [request])
+        let launchID = arguments.dropFirst().first.flatMap(string)
+        try await runtimeCoordinator.requestStart(
+            request: request,
+            launchID: launchID,
+            eventHandler: eventHandler
+        )
     }
 
     private func cancelRealtimeSessionStart(
@@ -679,17 +882,9 @@ public actor CodexDesktopRealtimeAppHostService {
         guard arguments == nil || arguments?.isEmpty == true else {
             throw Error.invalidArguments
         }
-        guard let starter = realtimeStarter,
-              let callbackInvoker
-        else {
-            await eventHandler(
-                "realtimeVoiceRuntime",
-                "cancelRealtimeSessionStart",
-                arguments
-            )
-            return
-        }
-        try await callbackInvoker(starter.cancel, [])
+        try await runtimeCoordinator.cancel(
+            eventHandler: eventHandler
+        )
     }
 
     private func presentationSnapshot() -> Value {

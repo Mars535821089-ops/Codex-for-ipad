@@ -60,6 +60,62 @@ func persistedAtomStoreRecoversFromMalformedStorageWithoutInventingState() {
 }
 
 @Test
+func persistedAtomStorePrunesOnlyWritableRootsFromPreviousIOSContainers() {
+    let suiteName = "CodexDesktopPersistedAtomStaleRootsTests-\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer {
+        defaults.removePersistentDomain(forName: suiteName)
+    }
+    let currentDocuments = URL(
+        fileURLWithPath:
+            "/var/mobile/Containers/Data/Application/CURRENT/Documents",
+        isDirectory: true
+    )
+    let store = CodexDesktopPersistedAtomStore(userDefaults: defaults)
+    _ = store.replace([
+        "thread-writable-roots": .object([
+            "current": .array([
+                .string(currentDocuments.path + "/Codex"),
+            ]),
+            "stale": .array([
+                .string(
+                    "/var/mobile/Containers/Data/Application/OLD/Documents/Codex"
+                ),
+            ]),
+            "mixed": .array([
+                .string("/Volumes/External/Project"),
+                .string(
+                    "/var/mobile/Containers/Data/Application/OLDER/Documents/Project"
+                ),
+            ]),
+            "unknown-shape": .string("preserve"),
+        ]),
+        "unrelated": .string("untouched"),
+    ])
+
+    _ = store.pruneStaleIOSApplicationContainerRoots(
+        currentDocumentsURL: currentDocuments
+    )
+
+    #expect(store.snapshot == [
+        "thread-writable-roots": .object([
+            "current": .array([
+                .string(currentDocuments.path + "/Codex"),
+            ]),
+            "mixed": .array([
+                .string("/Volumes/External/Project"),
+            ]),
+            "unknown-shape": .string("preserve"),
+        ]),
+        "unrelated": .string("untouched"),
+    ])
+    #expect(
+        CodexDesktopPersistedAtomStore(userDefaults: defaults).snapshot
+            == store.snapshot
+    )
+}
+
+@Test
 func pinnedThreadStorePreservesReleasedOrderAcrossRelaunches() {
     let suiteName =
         "CodexDesktopPinnedThreadStoreTests-\(UUID().uuidString)"

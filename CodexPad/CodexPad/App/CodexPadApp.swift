@@ -168,10 +168,14 @@ struct CodexPadApp: App {
 }
 
 @MainActor
-private enum CodexPadValidationFixtureCleaner {
+enum CodexPadValidationFixtureCleaner {
+    private static let realtimeVoiceBaseName = "realtime-voice-chat"
+
     static func cleanIfRequested(
         environment: [String: String],
-        sessionStore: CodexSessionStore
+        sessionStore: CodexSessionStore,
+        userDefaults: UserDefaults = .standard,
+        fileManager: FileManager = .default
     ) throws {
         guard environment["XCTestConfigurationFilePath"] != nil,
               environment[
@@ -185,8 +189,224 @@ private enum CodexPadValidationFixtureCleaner {
             .filter { $0.displayName == "Parity Git Workspace" }
             .map(\.id)
         for workspaceID in validationWorkspaceIDs {
-            try sessionStore.removeWorkspace(id: workspaceID)
+            try? sessionStore.removeWorkspace(id: workspaceID)
         }
+
+        let fixtureThreadIDs = realtimeVoiceFixtureThreadIDs(
+            userDefaults: userDefaults
+        )
+        try deleteRealtimeVoiceDirectories(fileManager: fileManager)
+        pruneRealtimeVoicePreferences(
+            fixtureThreadIDs: fixtureThreadIDs,
+            userDefaults: userDefaults
+        )
+        sessionStore.selectedWorkspaceID = nil
+        sessionStore.selectedThreadID = nil
+        deleteRealtimeVoiceThreads(
+            sessionStore: sessionStore,
+            fixtureThreadIDs: fixtureThreadIDs
+        )
+    }
+
+    private static func realtimeVoiceFixtureThreadIDs(
+        userDefaults: UserDefaults
+    ) -> Set<String> {
+        let values = userDefaults.dictionary(
+            forKey: CodexDesktopProjectlessOutputDirectoryStore
+                .defaultPersistenceKey
+        ) as? [String: String] ?? [:]
+        return Set(values.compactMap { threadID, path in
+            pathContainsRealtimeVoiceFixture(path) ? threadID : nil
+        })
+    }
+
+    private static func deleteRealtimeVoiceThreads(
+        sessionStore: CodexSessionStore,
+        fixtureThreadIDs: Set<String>
+    ) {
+        var threadsToDelete = Set<CodexStoredThreadID>()
+        for archived in [false, true] {
+            var cursor: String?
+            var seenCursors = Set<String>()
+            repeat {
+                guard let page = try? sessionStore.listThreads(
+                    id: .string(
+                        "validation-voice-list-\(UUID().uuidString)"
+                    ),
+                    params: CodexThreadListParams(
+                        cursor: cursor.map(CodexWireOptional.value)
+                            ?? .omitted,
+                        limit: .value(100),
+                        sortKey: .value(.updatedAt),
+                        sortDirection: .value(.descending),
+                        archived: .value(archived)
+                    )
+                ) else {
+                    break
+                }
+                for thread in page.data where
+                    fixtureThreadIDs.contains(thread.id.rawValue)
+                    || pathContainsRealtimeVoiceFixture(thread.cwd)
+                {
+                    threadsToDelete.insert(thread.id)
+                }
+                cursor = page.nextCursor
+                if let nextCursor = cursor,
+                   !seenCursors.insert(nextCursor).inserted
+                {
+                    cursor = nil
+                }
+            } while cursor != nil
+        }
+        for threadID in threadsToDelete {
+            try? sessionStore.deleteStoredThread(
+                id: .string(
+                    "validation-voice-delete-\(UUID().uuidString)"
+                ),
+                threadID: threadID
+            )
+        }
+    }
+
+    private static func deleteRealtimeVoiceDirectories(
+        fileManager: FileManager
+    ) throws {
+        let documents = fileManager.urls(
+            for: .documentDirectory,
+            in: .userDomainMask
+        ).first ?? fileManager.temporaryDirectory
+        let root = documents.appendingPathComponent(
+            "Codex",
+            isDirectory: true
+        )
+        guard let dateDirectories = try? fileManager.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return
+        }
+        for dateDirectory in dateDirectories {
+            guard (try? dateDirectory.resourceValues(
+                forKeys: [.isDirectoryKey]
+            ).isDirectory) == true,
+            let children = try? fileManager.contentsOfDirectory(
+                at: dateDirectory,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            ) else {
+                continue
+            }
+            for child in children where
+                isRealtimeVoiceFixtureName(child.lastPathComponent)
+            {
+                try fileManager.removeItem(at: child)
+            }
+        }
+    }
+
+    private static func pruneRealtimeVoicePreferences(
+        fixtureThreadIDs: Set<String>,
+        userDefaults: UserDefaults
+    ) {
+        let outputKey = CodexDesktopProjectlessOutputDirectoryStore
+            .defaultPersistenceKey
+        let outputValues = userDefaults.dictionary(forKey: outputKey)
+            as? [String: String] ?? [:]
+        userDefaults.set(
+            outputValues.filter {
+                !fixtureThreadIDs.contains($0.key)
+                    && !pathContainsRealtimeVoiceFixture($0.value)
+            },
+            forKey: outputKey
+        )
+
+        let assignmentStore = CodexDesktopThreadProjectAssignmentStore(
+            userDefaults: userDefaults
+        )
+        for threadID in fixtureThreadIDs {
+            _ = assignmentStore.removeAssignment(threadID: threadID)
+        }
+
+        let atomStore = CodexDesktopPersistedAtomStore(
+            userDefaults: userDefaults
+        )
+        var atoms = atomStore.snapshot
+        if case let .array(values)? = atoms["projectless-thread-ids"] {
+            atoms["projectless-thread-ids"] = .array(values.filter {
+                guard case let .string(threadID) = $0 else {
+                    return true
+                }
+                return !fixtureThreadIDs.contains(threadID)
+            })
+        }
+        if case let .object(values)? =
+            atoms["thread-projectless-output-directories"]
+        {
+            atoms["thread-projectless-output-directories"] = .object(
+                values.filter { threadID, value in
+                    guard !fixtureThreadIDs.contains(threadID) else {
+                        return false
+                    }
+                    guard case let .string(path) = value else {
+                        return true
+                    }
+                    return !pathContainsRealtimeVoiceFixture(path)
+                }
+            )
+        }
+        for key in atoms.keys where key.hasPrefix(
+            "thread-reference-capability:"
+        ) {
+            let threadID = String(
+                key.dropFirst("thread-reference-capability:".count)
+            )
+            if fixtureThreadIDs.contains(threadID) {
+                atoms.removeValue(forKey: key)
+            }
+        }
+        _ = atomStore.replace(atoms)
+        let documents = FileManager.default.urls(
+            for: .documentDirectory,
+            in: .userDomainMask
+        ).first ?? FileManager.default.temporaryDirectory
+        _ = atomStore.pruneStaleIOSApplicationContainerRoots(
+            currentDocumentsURL: documents
+        )
+
+        _ = CodexDesktopLocalProjectsStateStore(
+            userDefaults: userDefaults
+        ).removeNumberedValidationProjects(
+            baseName: realtimeVoiceBaseName
+        )
+
+        if let lastActive = userDefaults.string(
+            forKey: "codex.desktop.last-active-local-thread-id"
+        ), fixtureThreadIDs.contains(lastActive) {
+            userDefaults.removeObject(
+                forKey: "codex.desktop.last-active-local-thread-id"
+            )
+        }
+    }
+
+    private static func pathContainsRealtimeVoiceFixture(
+        _ path: String
+    ) -> Bool {
+        path.split(separator: "/").contains {
+            isRealtimeVoiceFixtureName(String($0))
+        }
+    }
+
+    private static func isRealtimeVoiceFixtureName(_ name: String) -> Bool {
+        guard name != realtimeVoiceBaseName else {
+            return true
+        }
+        let prefix = realtimeVoiceBaseName + "-"
+        guard name.hasPrefix(prefix) else {
+            return false
+        }
+        let suffix = name.dropFirst(prefix.count)
+        return !suffix.isEmpty && suffix.allSatisfy(\.isNumber)
     }
 }
 

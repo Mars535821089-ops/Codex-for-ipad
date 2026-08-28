@@ -52,11 +52,66 @@ public final class CodexDesktopPersistedAtomStore {
         return values
     }
 
+    /// Removes writable-root grants that point into a previous iOS app
+    /// container. Reinstalling a development build can change the container
+    /// UUID while Electron's persisted atom state survives, leaving released
+    /// thread resume attempts pointed at a path that no longer exists.
+    /// Non-container paths and roots inside the current Documents directory
+    /// are preserved verbatim.
+    @discardableResult
+    public func pruneStaleIOSApplicationContainerRoots(
+        currentDocumentsURL: URL
+    ) -> [String: CodexJSONValue] {
+        guard case let .object(entries)? = values["thread-writable-roots"]
+        else {
+            return values
+        }
+
+        let currentDocumentsPath = currentDocumentsURL
+            .standardizedFileURL.path
+        var retainedEntries: [String: CodexJSONValue] = [:]
+        for (threadID, value) in entries {
+            guard case let .array(roots) = value else {
+                retainedEntries[threadID] = value
+                continue
+            }
+            let retainedRoots = roots.filter { root in
+                guard case let .string(path) = root else {
+                    return true
+                }
+                return !Self.isStaleIOSApplicationContainerPath(
+                    path,
+                    currentDocumentsPath: currentDocumentsPath
+                )
+            }
+            if !retainedRoots.isEmpty {
+                retainedEntries[threadID] = .array(retainedRoots)
+            }
+        }
+        values["thread-writable-roots"] = .object(retainedEntries)
+        persist()
+        return values
+    }
+
     private func persist() {
         guard let data = try? JSONEncoder().encode(values) else {
             return
         }
         defaults.set(data, forKey: storageKey)
+    }
+
+    private static func isStaleIOSApplicationContainerPath(
+        _ path: String,
+        currentDocumentsPath: String
+    ) -> Bool {
+        let prefix = "/var/mobile/Containers/Data/Application/"
+        guard path.hasPrefix(prefix),
+              path.dropFirst(prefix.count).contains("/Documents")
+        else {
+            return false
+        }
+        return path != currentDocumentsPath
+            && !path.hasPrefix(currentDocumentsPath + "/")
     }
 
     private static func decode(
@@ -633,6 +688,51 @@ public final class CodexDesktopLocalProjectsStateStore:
             persistLocked()
             return removedIDs.count
         }
+    }
+
+    /// Removes the numbered projectless validation fixtures created by the
+    /// physical realtime-voice acceptance test. A similarly prefixed user
+    /// project is intentionally retained unless its suffix is only digits.
+    @discardableResult
+    public func removeNumberedValidationProjects(
+        baseName: String
+    ) -> Int {
+        withLock {
+            let projectIDs = state.projects.compactMap {
+                projectID, metadata in
+                Self.isNumberedValidationName(
+                    metadata.name,
+                    baseName: baseName
+                ) ? projectID : nil
+            }
+            guard !projectIDs.isEmpty else {
+                return 0
+            }
+            let removedIDs = Set(projectIDs)
+            for projectID in removedIDs {
+                state.projects.removeValue(forKey: projectID)
+                state.removedProjectIDs.insert(projectID)
+                state.explicitProjectIDs.remove(projectID)
+            }
+            state.order.removeAll { removedIDs.contains($0) }
+            persistLocked()
+            return removedIDs.count
+        }
+    }
+
+    private static func isNumberedValidationName(
+        _ name: String,
+        baseName: String
+    ) -> Bool {
+        guard name != baseName else {
+            return true
+        }
+        let prefix = baseName + "-"
+        guard name.hasPrefix(prefix) else {
+            return false
+        }
+        let suffix = name.dropFirst(prefix.count)
+        return !suffix.isEmpty && suffix.allSatisfy(\.isNumber)
     }
 
     /// Updates existing metadata or records caller-provided metadata without

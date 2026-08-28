@@ -10,6 +10,7 @@
 | Signing/install/launch | Passed with Apple Development signing |
 | Full visible parity inventory | Passed |
 | Real provider response | Passed with the expected streamed response |
+| Realtime Voice | Passed on physical iPad; active microphone controls left loading state |
 | Clean post-validation launch | Passed |
 | Automatic updater | Disabled |
 
@@ -21,6 +22,8 @@ A release is accepted only when all four layers agree:
 2. **Release artifact** — arm64 iPhoneOS Release build with a valid application identity.
 3. **Physical-device execution** — install, launch, foreground process and cold-launch behavior on a connected M-series iPad.
 4. **User workflow evidence** — login, official model catalog, projects, chat, files, Git/Review, Side Chat, Terminal, MCP and settings paths.
+
+Latest source-gate counts for this baseline: 504 Python contract tests, 1,521 Swift tests and 261 Rust tests passed. Three Python cases are explicitly tracked as expected failures rather than unexpected regressions.
 
 ## Privacy of evidence
 

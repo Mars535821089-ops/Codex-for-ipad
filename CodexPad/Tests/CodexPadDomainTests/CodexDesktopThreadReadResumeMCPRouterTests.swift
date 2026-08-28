@@ -33,6 +33,38 @@ private final class ThreadReadResumeMCPTransport:
 }
 
 @MainActor
+private final class ThreadResumeHydrationFallbackTransport:
+    CodexCoreTransport
+{
+    private enum Failure: Swift.Error {
+        case rejectedVolatileSettings
+    }
+
+    private(set) var requested: [CodexAppServerThreadRequest] = []
+    let reply: Data
+
+    init(reply: Data) {
+        self.reply = reply
+    }
+
+    func submit(_ command: CodexCoreCommand) throws {}
+
+    func request(
+        _ request: CodexAppServerThreadRequest
+    ) throws -> Data {
+        requested.append(request)
+        if requested.count == 1 {
+            throw Failure.rejectedVolatileSettings
+        }
+        return reply
+    }
+
+    func nextEvent() throws -> CodexCoreEvent? {
+        nil
+    }
+}
+
+@MainActor
 private final class ThreadReadResumeMCPListOnlyBoundary:
     CodexDesktopThreadSessionListing
 {
@@ -360,6 +392,133 @@ func desktopThreadResumeMCPRouterPreservesEveryOverrideState()
                 value: expectedValue
             )
     )
+}
+
+@MainActor
+@Test
+func desktopThreadResumeRetriesReleasedHydrationWithPersistedVolatileSettings()
+    async throws
+{
+    let thread = threadReadResumeMCPStoredThread()
+    let requestID = CodexAppServerRequestID.string(
+        "resume-renderer-hydration"
+    )
+    let result = threadReadResumeMCPResumeResult(thread: thread)
+    let reply = CodexAppServerReply<CodexThreadResumeResult>.success(
+        .init(id: requestID, result: result)
+    )
+    let transport = ThreadResumeHydrationFallbackTransport(
+        reply: try JSONEncoder().encode(reply)
+    )
+    let store = CodexSessionStore(transport: transport)
+
+    let response = await CodexDesktopInitialMCPRouter
+        .responseIncludingFileSystem(
+            to: threadReadResumeMCPRequest(
+                id: requestID,
+                method: "thread/resume",
+                params: .object([
+                    "threadId": .string(thread.id.rawValue),
+                    "model": .null,
+                    "modelProvider": .null,
+                    "cwd": .string("/workspace/current"),
+                    "config": .object([
+                        "features.realtime_conversation": .bool(true)
+                    ]),
+                    "developerInstructions": .string(
+                        "Current released renderer instructions"
+                    ),
+                    "personality": .string("friendly"),
+                ])
+            ),
+            state: threadReadResumeMCPState(),
+            allowedFileSystemRoots: [],
+            threadLister: store
+        )
+
+    #expect(response == threadReadResumeMCPResult(
+        id: requestID,
+        value: try threadReadResumeMCPJSONValue(result)
+    ))
+    #expect(transport.requested.count == 2)
+    guard transport.requested.count == 2,
+          case let .resume(_, first) = transport.requested[0],
+          case let .resume(_, fallback) = transport.requested[1]
+    else {
+        Issue.record("Expected original and hydration fallback resumes")
+        return
+    }
+    #expect(first.developerInstructions == .value(
+        "Current released renderer instructions"
+    ))
+    #expect(first.personality == .value(.friendly))
+    #expect(fallback.developerInstructions == .omitted)
+    #expect(fallback.personality == .omitted)
+    #expect(fallback.threadID == first.threadID)
+    #expect(fallback.cwd == first.cwd)
+    #expect(fallback.config == first.config)
+}
+
+@MainActor
+@Test
+func desktopThreadResumeRetriesReleasedHydrationWhenPersonalityIsNull()
+    async throws
+{
+    let thread = threadReadResumeMCPStoredThread()
+    let requestID = CodexAppServerRequestID.string(
+        "resume-renderer-hydration-null-personality"
+    )
+    let result = threadReadResumeMCPResumeResult(thread: thread)
+    let reply = CodexAppServerReply<CodexThreadResumeResult>.success(
+        .init(id: requestID, result: result)
+    )
+    let transport = ThreadResumeHydrationFallbackTransport(
+        reply: try JSONEncoder().encode(reply)
+    )
+    let store = CodexSessionStore(transport: transport)
+
+    let response = await CodexDesktopInitialMCPRouter
+        .responseIncludingFileSystem(
+            to: threadReadResumeMCPRequest(
+                id: requestID,
+                method: "thread/resume",
+                params: .object([
+                    "threadId": .string(thread.id.rawValue),
+                    "model": .null,
+                    "modelProvider": .null,
+                    "cwd": .string("/workspace/current"),
+                    "config": .object([
+                        "features.realtime_conversation": .bool(true)
+                    ]),
+                    "developerInstructions": .string(
+                        "Current released renderer instructions"
+                    ),
+                    "personality": .null,
+                ])
+            ),
+            state: threadReadResumeMCPState(),
+            allowedFileSystemRoots: [],
+            threadLister: store
+        )
+
+    #expect(response == threadReadResumeMCPResult(
+        id: requestID,
+        value: try threadReadResumeMCPJSONValue(result)
+    ))
+    #expect(transport.requested.count == 2)
+    guard transport.requested.count == 2,
+          case let .resume(_, first) = transport.requested[0],
+          case let .resume(_, fallback) = transport.requested[1]
+    else {
+        Issue.record("Expected original and null-personality fallback resumes")
+        return
+    }
+    #expect(first.personality == .null)
+    #expect(fallback.developerInstructions == .omitted)
+    #expect(fallback.personality == .omitted)
+    #expect(fallback.threadID == first.threadID)
+    #expect(fallback.cwd == first.cwd)
+    #expect(fallback.config == first.config)
 }
 
 @MainActor

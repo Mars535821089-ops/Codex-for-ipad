@@ -188,6 +188,69 @@ func desktopRealtimeVoiceClaimsPublishesControlsAndReleases()
 }
 
 @Test
+func desktopRealtimeVoiceSubscriptionReceivesInitialAndPublishedSnapshots()
+    async throws
+{
+    let callbacks = RealtimeCallbackRecorder()
+    let service = CodexDesktopRealtimeAppHostService(
+        codexHome: FileManager.default.temporaryDirectory,
+        callbackInvoker: { callbackID, arguments in
+            await callbacks.record(
+                callbackID: callbackID,
+                arguments: arguments
+            )
+        }
+    )
+    let callbackID = -71
+    _ = try await service.invoke(
+        service: "realtimeVoice",
+        method: "subscribe",
+        arguments: [.import(callbackID)]
+    )
+    let initialCalls = await callbacks.calls()
+    #expect(initialCalls.count == 1)
+    #expect(initialCalls.first?.callbackID == callbackID)
+    #expect(
+        initialCalls.first?.arguments
+            == [CodexDesktopRealtimeAppHostService.inactiveVoiceSnapshot]
+    )
+
+    let locator = realtimeLocator()
+    let claim = try await service.invoke(
+        service: "realtimeVoice",
+        method: "claim",
+        arguments: [locator, .import(91), .string("main-thread")]
+    )
+    guard case let .string(claimID) = claim else {
+        Issue.record("claim must return a claim id")
+        return
+    }
+    _ = try await service.invoke(
+        service: "realtimeVoice",
+        method: "publish",
+        arguments: [
+            .string(claimID),
+            .object([
+                "activity": .string("listening"),
+                "microphoneMuted": .bool(false),
+                "outputMuted": .bool(false),
+                "phase": .string("active"),
+            ]),
+        ]
+    )
+
+    let calls = await callbacks.calls()
+    #expect(calls.count == 2)
+    #expect(calls.last?.callbackID == callbackID)
+    guard case let .object(snapshot)? = calls.last?.arguments.first else {
+        Issue.record("published subscription callback must carry a snapshot")
+        return
+    }
+    #expect(snapshot["phase"] == .string("active"))
+    #expect(snapshot["activity"] == .string("listening"))
+}
+
+@Test
 func desktopRealtimeVoiceAcceptsReleasedTransferCancellationAndDictation()
     async throws
 {
@@ -401,8 +464,9 @@ func desktopRealtimeRuntimeInvokesRegisteredStarterCallbacks()
             )
         }
     )
-    let requestCallbackID = 17
-    let cancelCallbackID = 23
+    // Renderer-owned Cap'n Web exports are negative on the released wire.
+    let requestCallbackID = -17
+    let cancelCallbackID = -23
 
     _ = try await service.invoke(
         service: "realtimeVoiceRuntime",
@@ -450,6 +514,182 @@ func desktopRealtimeRuntimeInvokesRegisteredStarterCallbacks()
         arguments: [.object(["source": .string("after-unregister")])]
     )
     #expect(await recorder.calls().count == 2)
+}
+
+@Test
+func desktopRealtimeRuntimeBridgesPrimaryRequestToOverlayStarter()
+    async throws
+{
+    let coordinator =
+        CodexDesktopRealtimeAppHostService.RuntimeCoordinator()
+    let events = RealtimeEventRecorder()
+    let callbacks = RealtimeCallbackRecorder()
+    let primary = CodexDesktopRealtimeAppHostService(
+        codexHome: FileManager.default.temporaryDirectory,
+        eventHandler: { service, method, arguments in
+            await events.record(
+                service: service,
+                method: method,
+                arguments: arguments
+            )
+        },
+        runtimeCoordinator: coordinator
+    )
+    let overlay = CodexDesktopRealtimeAppHostService(
+        codexHome: FileManager.default.temporaryDirectory,
+        callbackInvoker: { callbackID, arguments in
+            await callbacks.record(
+                callbackID: callbackID,
+                arguments: arguments
+            )
+        },
+        runtimeCoordinator: coordinator
+    )
+    let request: RealtimeValue = .object([
+        "source": .string("composer_button_new_thread")
+    ])
+
+    _ = try await primary.invoke(
+        service: "realtimeVoiceRuntime",
+        method: "requestRealtimeStart",
+        arguments: [request, .string("launch-cross-port")]
+    )
+    #expect(
+        await events.contains(
+            service: "realtimeVoiceRuntime",
+            method: "requestRealtimeStart"
+        )
+    )
+    #expect(await callbacks.calls().isEmpty)
+
+    _ = try await overlay.invoke(
+        service: "realtimeVoiceRuntime",
+        method: "registerRealtimeStarter",
+        arguments: [.import(-31), .import(-37), .bool(true)]
+    )
+    for _ in 0 ..< 100 where await callbacks.calls().isEmpty {
+        try await Task.sleep(nanoseconds: 1_000_000)
+    }
+
+    #expect(
+        await callbacks.calls() == [
+            .init(callbackID: -31, arguments: [request])
+        ]
+    )
+    #expect(
+        await events.contains(
+            service: "realtimeVoiceRuntime",
+            method: "launchStateChanged"
+        )
+    )
+}
+
+@Test
+func desktopRealtimeRuntimeWaitsForReadyReplacementStarter()
+    async throws
+{
+    let coordinator =
+        CodexDesktopRealtimeAppHostService.RuntimeCoordinator()
+    let events = RealtimeEventRecorder()
+    let callbacks = RealtimeCallbackRecorder()
+    let primary = CodexDesktopRealtimeAppHostService(
+        codexHome: FileManager.default.temporaryDirectory,
+        eventHandler: { service, method, arguments in
+            await events.record(
+                service: service,
+                method: method,
+                arguments: arguments
+            )
+        },
+        runtimeCoordinator: coordinator
+    )
+    let overlay = CodexDesktopRealtimeAppHostService(
+        codexHome: FileManager.default.temporaryDirectory,
+        callbackInvoker: { callbackID, arguments in
+            await callbacks.record(
+                callbackID: callbackID,
+                arguments: arguments
+            )
+        },
+        runtimeCoordinator: coordinator
+    )
+    let request: RealtimeValue = .object([
+        "source": .string("composer_button_new_thread")
+    ])
+
+    _ = try await primary.invoke(
+        service: "realtimeVoiceRuntime",
+        method: "requestRealtimeStart",
+        arguments: [request, .string("launch-ready-race")]
+    )
+    _ = try await overlay.invoke(
+        service: "realtimeVoiceRuntime",
+        method: "registerRealtimeStarter",
+        arguments: [.import(-41), .import(-43), .bool(false)]
+    )
+    try await Task.sleep(nanoseconds: 20_000_000)
+    #expect(await callbacks.calls().isEmpty)
+
+    _ = try await overlay.invoke(
+        service: "realtimeVoiceRuntime",
+        method: "unregisterRealtimeStarter",
+        arguments: []
+    )
+    _ = try await overlay.invoke(
+        service: "realtimeVoiceRuntime",
+        method: "registerRealtimeStarter",
+        arguments: [.import(-47), .import(-53), .bool(true)]
+    )
+    for _ in 0 ..< 100 where await callbacks.calls().isEmpty {
+        try await Task.sleep(nanoseconds: 1_000_000)
+    }
+
+    #expect(
+        await callbacks.calls() == [
+            .init(callbackID: -47, arguments: [request])
+        ]
+    )
+    #expect(
+        await events.contains(
+            service: "realtimeVoiceRuntime",
+            method: "launchStateChanged"
+        )
+    )
+}
+
+@Test
+func desktopRealtimeRuntimeAcceptsReleasedUndefinedLaunchID()
+    async throws
+{
+    let events = RealtimeEventRecorder()
+    let service = CodexDesktopRealtimeAppHostService(
+        codexHome: FileManager.default.temporaryDirectory,
+        eventHandler: { service, method, arguments in
+            await events.record(
+                service: service,
+                method: method,
+                arguments: arguments
+            )
+        }
+    )
+
+    _ = try await service.invoke(
+        service: "realtimeVoiceRuntime",
+        method: "requestRealtimeStart",
+        arguments: [
+            .object([
+                "source": .string("avatar_overlay_button_new_thread")
+            ]),
+            .undefined,
+        ]
+    )
+
+    #expect(
+        await events.contains(
+            service: "realtimeVoiceRuntime",
+            method: "requestRealtimeStart"
+        )
+    )
 }
 
 @Test

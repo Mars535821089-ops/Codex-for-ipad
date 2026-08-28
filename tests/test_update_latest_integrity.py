@@ -841,7 +841,7 @@ if command == "verify":
             "xcuiTests": "passed",
             "physicalDeviceTests": "passed",
             "physicalDeviceUDID": "00000000-0000000000000000",
-            "physicalDeviceName": "Mars丶Ipad Pro 5代",
+            "physicalDeviceName": "Example iPad Pro",
             "physicalDeviceModel": "iPad Pro (12.9-inch) (5th generation)",
             "physicalDeviceOS": "26.0",
             "deviceBuild": "passed",

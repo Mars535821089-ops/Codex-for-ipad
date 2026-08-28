@@ -1482,6 +1482,111 @@ final class CodexPadParityCaptureUITests: XCTestCase {
     }
 
     @MainActor
+    func testRealtimeVoiceLeavesLoadingStateOnPhysicalIPad() {
+        let app = XCUIApplication()
+        app.launchEnvironment["CODEXPAD_UI_TEST_VOICE_DIAGNOSTIC"] = "1"
+        app.launchArguments += [
+            "-AppleLanguages", "(en)",
+            "-AppleLocale", "en_US",
+        ]
+        if app.state != .notRunning {
+            app.terminate()
+        }
+        app.launch()
+
+        let surface = app.webViews["CodexDesktopSurfaceReady"]
+        XCTAssertTrue(
+            surface.waitForExistence(timeout: releasedSurfaceBudget),
+            "The official renderer did not reach its ready checkpoint."
+        )
+        completeWelcomeIfNeeded(in: surface)
+        XCTAssertTrue(
+            signedInMarker(in: surface).waitForExistence(timeout: 30),
+            "The physical iPad did not restore its saved ChatGPT account."
+        )
+
+        let startNewVoice = surface.descendants(matching: .any).matching(
+            NSPredicate(
+                format:
+                    "label == %@ OR label == %@ OR label == %@ "
+                    + "OR label == %@",
+                "Start new voice chat",
+                "开始新的语音聊天",
+                "Start voice chat",
+                "开始语音聊天"
+            )
+        ).firstMatch
+        XCTAssertTrue(
+            startNewVoice.waitForExistence(timeout: 15),
+            "The released composer did not expose its voice control."
+        )
+        startNewVoice.tap()
+
+        let onboardingStart = surface.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "label == %@ OR label == %@",
+                "Start voice chat",
+                "开始语音聊天"
+            )
+        ).firstMatch
+        if onboardingStart.waitForExistence(timeout: 8) {
+            onboardingStart.tap()
+        }
+
+        let springboard = XCUIApplication(
+            bundleIdentifier: "com.apple.springboard"
+        )
+        let allowMicrophone = springboard.alerts.buttons.matching(
+            NSPredicate(
+                format:
+                    "label == %@ OR label == %@ OR label == %@ "
+                    + "OR label == %@",
+                "Allow",
+                "允许",
+                "Allow While Using App",
+                "使用 App 时允许"
+            )
+        ).firstMatch
+        if allowMicrophone.waitForExistence(timeout: 8) {
+            allowMicrophone.tap()
+        }
+
+        let activeVoiceControl = surface.descendants(matching: .any).matching(
+            NSPredicate(
+                format:
+                    "label == %@ OR label == %@ OR label == %@ "
+                    + "OR label == %@ OR label == %@ OR label == %@",
+                "Stop voice chat",
+                "停止语音聊天",
+                "Mute microphone",
+                "将麦克风静音",
+                "Unmute microphone",
+                "取消麦克风静音"
+            )
+        ).firstMatch
+        XCTAssertTrue(
+            activeVoiceControl.waitForExistence(timeout: 45),
+            "Realtime voice remained in its loading state instead of exposing active microphone controls."
+        )
+
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "CODEXPAD_PHYSICAL_REALTIME_VOICE_ACTIVE"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+
+        let stopVoice = surface.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "label == %@ OR label == %@",
+                "Stop voice chat",
+                "停止语音聊天"
+            )
+        ).firstMatch
+        if stopVoice.exists {
+            stopVoice.tap()
+        }
+    }
+
+    @MainActor
     func testFinalValidationFixtureCleanupOnPhysicalIPad() {
         let app = XCUIApplication()
         app.launchArguments += [

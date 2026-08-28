@@ -355,7 +355,9 @@ public final class CodexDesktopAppHostSessionStore {
         guard let session = sessions[callback.portID] else {
             throw Error.unknownPortID(callback.portID)
         }
-        guard callback.callbackID >= 0 else {
+        // Renderer-owned exports are negative in released Cap'n Web frames.
+        // Zero is the session root, not a callable renderer callback.
+        guard callback.callbackID != 0 else {
             throw Error.invalidCallbackID(callback.callbackID)
         }
         guard let deferredFrameHandler else {
@@ -386,7 +388,7 @@ public final class CodexDesktopAppHostSessionStore {
         guard let session = sessions[portID] else {
             throw Error.unknownPortID(portID)
         }
-        guard callbackID >= 0 else {
+        guard callbackID != 0 else {
             throw Error.invalidCallbackID(callbackID)
         }
         guard let deferredFrameHandler else {

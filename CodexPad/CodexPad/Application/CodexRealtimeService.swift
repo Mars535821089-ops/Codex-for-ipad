@@ -101,6 +101,7 @@ public actor CodexRealtimeService: CodexDesktopRealtimeManaging {
     private let credentialsProvider: CredentialsProvider
     private let notificationSink: NotificationSink
     private let baseURL: URL
+    private let webRTCSidebandBaseURL: URL
     private var sessions: [String: Session] = [:]
 
     public init(
@@ -109,12 +110,14 @@ public actor CodexRealtimeService: CodexDesktopRealtimeManaging {
             any CodexDesktopNetworkFetchTransport =
                 CodexDesktopURLSessionNetworkFetchTransport(),
         baseURL: URL = URL(string: "https://chatgpt.com/backend-api/codex")!,
+        webRTCSidebandBaseURL: URL = URL(string: "https://api.openai.com/v1")!,
         credentialsProvider: @escaping CredentialsProvider,
         notificationSink: @escaping NotificationSink
     ) {
         self.connector = connector
         self.httpTransport = httpTransport
         self.baseURL = baseURL
+        self.webRTCSidebandBaseURL = webRTCSidebandBaseURL
         self.credentialsProvider = credentialsProvider
         self.notificationSink = notificationSink
     }
@@ -262,15 +265,19 @@ public actor CodexRealtimeService: CodexDesktopRealtimeManaging {
         credentials: CodexOfficialCredentials,
         sessionID: String
     ) throws -> URLRequest {
+        // Codex creates WebRTC calls through the ChatGPT backend, but the
+        // authenticated AVAS sideband socket is hosted on the direct realtime
+        // API endpoint. Standalone WebSocket sessions continue to use baseURL.
+        let endpointBaseURL = callID == nil ? baseURL : webRTCSidebandBaseURL
         var components = URLComponents(
-            url: baseURL,
+            url: endpointBaseURL,
             resolvingAgainstBaseURL: false
         )
         components?.scheme =
-            baseURL.scheme == "http" ? "ws" : "wss"
-        let normalizedPath = baseURL.path.hasSuffix("/")
-            ? String(baseURL.path.dropLast())
-            : baseURL.path
+            endpointBaseURL.scheme == "http" ? "ws" : "wss"
+        let normalizedPath = endpointBaseURL.path.hasSuffix("/")
+            ? String(endpointBaseURL.path.dropLast())
+            : endpointBaseURL.path
         components?.path =
             normalizedPath
             + (
@@ -279,7 +286,10 @@ public actor CodexRealtimeService: CodexDesktopRealtimeManaging {
                     : "/realtime"
             )
         var query: [URLQueryItem] = []
-        if parameters.version == "v1" {
+        // Standalone V1 realtime sessions declare their intent. A WebRTC
+        // sideband joins an already-created call and, like desktop Codex,
+        // must replace that standalone query shape with only `call_id`.
+        if parameters.version == "v1", callID == nil {
             query.append(
                 URLQueryItem(
                     name: "intent",
@@ -379,6 +389,7 @@ public actor CodexRealtimeService: CodexDesktopRealtimeManaging {
             "Authorization":
                 "Bearer \(credentials.accessToken)",
             "Content-Type": "application/json",
+            "OpenAI-Alpha": "quicksilver=v2",
             "originator": "codex_for_ipad",
             "x-session-id": sessionID,
             "session-id": sessionID,
@@ -398,8 +409,13 @@ public actor CodexRealtimeService: CodexDesktopRealtimeManaging {
             )
         )
         guard (200 ..< 300).contains(response.status) else {
+            let detail = Self.responseDiagnosticDetail(
+                response.body
+            )
+            let suffix = detail.map { ": \($0)" } ?? ""
             throw CodexRealtimeServiceError.connectionFailed(
                 "realtime call returned HTTP \(response.status)"
+                    + suffix
             )
         }
         let location = response.headers.first {
@@ -421,6 +437,15 @@ public actor CodexRealtimeService: CodexDesktopRealtimeManaging {
             String(decoding: response.body, as: UTF8.self),
             callID
         )
+    }
+
+    private static func responseDiagnosticDetail(
+        _ body: Data
+    ) -> String? {
+        let text = String(decoding: body, as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        return String(text.prefix(1_024))
     }
 
     public func appendAudio(threadID: String, audio: CodexRealtimeAudioChunk) async throws {
