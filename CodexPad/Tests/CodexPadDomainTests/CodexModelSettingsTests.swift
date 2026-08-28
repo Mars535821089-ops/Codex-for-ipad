@@ -2,7 +2,7 @@ import Testing
 @testable import CodexPadDomain
 
 @Test
-func recoveredModelCatalogPreservesTheCompleteOfficialSnapshotAndDefaults()
+func recoveredModelCatalogMatchesTheCurrentDesktopVisibleModelsAndDefaults()
     throws
 {
     #expect(
@@ -13,8 +13,7 @@ func recoveredModelCatalogPreservesTheCompleteOfficialSnapshotAndDefaults()
             "gpt-5.5",
             "gpt-5.4",
             "gpt-5.4-mini",
-            "gpt-5.2",
-            "codex-auto-review",
+            "gpt-5.3-codex-spark",
         ]
     )
     let sol = try #require(
@@ -31,6 +30,14 @@ func recoveredModelCatalogPreservesTheCompleteOfficialSnapshotAndDefaults()
     )
     #expect(luna.defaultReasoningEffort == .medium)
     #expect(!luna.supportedReasoningEfforts.contains(.ultra))
+
+    let spark = try #require(
+        CodexModelCatalog.current.first { $0.id == "gpt-5.3-codex-spark" }
+    )
+    #expect(spark.displayName == "GPT-5.3-Codex-Spark")
+    #expect(spark.defaultReasoningEffort == .high)
+    #expect(spark.inputModalities == [.text])
+    #expect(!spark.hidden)
 }
 
 @Test

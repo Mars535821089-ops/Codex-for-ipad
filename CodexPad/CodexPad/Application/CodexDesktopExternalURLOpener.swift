@@ -160,7 +160,21 @@ public final class CodexDesktopExternalURLOpener:
         }
 
         return isReleasedOAuthAuthorizeURL(url)
+            || isReleasedDeviceVerificationURL(url)
             || isReleasedDesktopAuthenticationWrapperURL(url)
+    }
+
+    private static func isReleasedDeviceVerificationURL(
+        _ url: URL
+    ) -> Bool {
+        url.scheme?.lowercased() == "https"
+            && url.host?.lowercased() == "auth.openai.com"
+            && url.port == nil
+            && url.user == nil
+            && url.password == nil
+            && url.path == "/codex/device"
+            && url.query == nil
+            && url.fragment == nil
     }
 
     private static func isReleasedOAuthAuthorizeURL(

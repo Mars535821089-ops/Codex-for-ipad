@@ -35,6 +35,7 @@ class UpgradeTransactionTests(unittest.TestCase):
             "CodexCore/Cargo.lock",
             "CodexCore/src/official_provider.rs",
             "CodexCore/resources/models.json",
+            "CodexCore/resources/client-version.txt",
             "CodexPad/CodexPad/Domain/CodexModelCatalog.generated.swift",
             "CodexPad/CodexPad/Domain/CodexBuildMetadata.generated.swift",
             (

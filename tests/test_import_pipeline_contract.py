@@ -743,6 +743,14 @@ class ImportPipelineContractTests(unittest.TestCase):
             script,
         )
         self.assertIn('--rust-json-output "$MODEL_RUST_JSON"', script)
+        self.assertIn(
+            '--official-cargo-toml "$OFFICIAL_CARGO_TOML"',
+            script,
+        )
+        self.assertIn(
+            '--rust-client-version-output "$MODEL_CLIENT_VERSION"',
+            script,
+        )
 
     def test_upgrade_rolls_back_embedded_rust_model_catalog_on_failure(
         self,
@@ -760,6 +768,14 @@ class ImportPipelineContractTests(unittest.TestCase):
             script,
         )
         self.assertIn('rm -f "$MODEL_RUST_JSON"', script)
+        self.assertIn(
+            'cp "$MODEL_CLIENT_VERSION" "$BACKUP/client-version.txt"',
+            script,
+        )
+        self.assertIn(
+            'cp "$BACKUP/client-version.txt" "$MODEL_CLIENT_VERSION"',
+            script,
+        )
 
     def test_upgrade_regenerates_runtime_build_metadata_before_xcode_project(
         self,
@@ -1272,7 +1288,7 @@ class ImportPipelineContractTests(unittest.TestCase):
                     "set -euo pipefail\n"
                     "if [[ \"$*\" == 'xcdevice list --timeout 5' ]]; then\n"
                     "  cat <<'JSON'\n"
-                    '[{"name":"Test iPad","identifier":"00000000-0000000000000000",'
+                    '[{"name":"Mars iPad","identifier":"00000000-0000000000000000",'
                     '"available":true,"simulator":false,'
                     '"platform":"com.apple.platform.iphoneos",'
                     '"modelName":"iPad Pro (12.9-inch) (5th generation)",'
@@ -1421,7 +1437,7 @@ class ImportPipelineContractTests(unittest.TestCase):
                     "xcuiTests": "passed",
                     "physicalDeviceTests": "passed",
                     "physicalDeviceUDID": "00000000-0000000000000000",
-                    "physicalDeviceName": "Test iPad",
+                    "physicalDeviceName": "Mars iPad",
                     "physicalDeviceModel": (
                         "iPad Pro (12.9-inch) (5th generation)"
                     ),
@@ -1549,6 +1565,10 @@ class ImportPipelineContractTests(unittest.TestCase):
             )
             model_source.parent.mkdir(parents=True)
             model_source.write_text('{"models":[]}\n', encoding="utf-8")
+            (model_source.parents[1] / "Cargo.toml").write_text(
+                "[workspace.package]\nversion = \"0.147.0-alpha.6.6\"\n",
+                encoding="utf-8",
+            )
             feature_source = (
                 root
                 / f"artifacts/full-reverse-{version}/official-codex-source/"
@@ -1571,7 +1591,8 @@ class ImportPipelineContractTests(unittest.TestCase):
                 "generate_model_catalog.py": (
                     "import pathlib,sys\n"
                     "for flag in "
-                    "('--json-output','--swift-output','--rust-json-output'):\n"
+                    "('--json-output','--swift-output','--rust-json-output',"
+                    "'--rust-client-version-output'):\n"
                     " p=pathlib.Path(sys.argv[sys.argv.index(flag)+1]);"
                     " p.parent.mkdir(parents=True,exist_ok=True);"
                     " p.write_text('generated model\\n')\n"
@@ -1728,6 +1749,10 @@ class ImportPipelineContractTests(unittest.TestCase):
             )
             model_source.parent.mkdir(parents=True)
             model_source.write_text('{"models":[]}\n', encoding="utf-8")
+            (model_source.parents[1] / "Cargo.toml").write_text(
+                "[workspace.package]\nversion = \"0.0.0\"\n",
+                encoding="utf-8",
+            )
             feature_source = (
                 root
                 / f"artifacts/full-reverse-{version}/official-codex-source/"
@@ -1754,7 +1779,8 @@ class ImportPipelineContractTests(unittest.TestCase):
                     "import pathlib,sys\n"
                     "args=sys.argv\n"
                     "for flag in "
-                    "('--json-output','--swift-output','--rust-json-output'):\n"
+                    "('--json-output','--swift-output','--rust-json-output',"
+                    "'--rust-client-version-output'):\n"
                     " p=pathlib.Path(args[args.index(flag)+1]);"
                     " p.parent.mkdir(parents=True,exist_ok=True);"
                     " p.write_text('generated\\n')\n"

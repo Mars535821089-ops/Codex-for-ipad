@@ -34,6 +34,8 @@ MODEL_SOURCE="$PROJECT_ROOT/artifacts/full-reverse-$VERSION/official-codex-sourc
 MODEL_JSON="$PROJECT_ROOT/versions/$VERSION/model-catalog.json"
 MODEL_SWIFT="$PROJECT_ROOT/CodexPad/CodexPad/Domain/CodexModelCatalog.generated.swift"
 MODEL_RUST_JSON="$PROJECT_ROOT/CodexCore/resources/models.json"
+OFFICIAL_CARGO_TOML="$PROJECT_ROOT/artifacts/full-reverse-$VERSION/official-codex-source/codex-rs/Cargo.toml"
+MODEL_CLIENT_VERSION="$PROJECT_ROOT/CodexCore/resources/client-version.txt"
 BUILD_METADATA_SCRIPT="$PROJECT_ROOT/scripts/generate_build_metadata.py"
 BUILD_METADATA_SWIFT="$PROJECT_ROOT/CodexPad/CodexPad/Domain/CodexBuildMetadata.generated.swift"
 FEATURE_CATALOG_SCRIPT="$PROJECT_ROOT/scripts/generate_experimental_feature_catalog.py"
@@ -87,6 +89,9 @@ fi
 if [[ -f "$MODEL_RUST_JSON" ]]; then
   cp "$MODEL_RUST_JSON" "$BACKUP/models.json"
 fi
+if [[ -f "$MODEL_CLIENT_VERSION" ]]; then
+  cp "$MODEL_CLIENT_VERSION" "$BACKUP/client-version.txt"
+fi
 if [[ -f "$BUILD_METADATA_SWIFT" ]]; then
   cp "$BUILD_METADATA_SWIFT" "$BACKUP/CodexBuildMetadata.generated.swift"
 fi
@@ -119,6 +124,11 @@ restore_on_failure() {
       cp "$BACKUP/models.json" "$MODEL_RUST_JSON"
     else
       rm -f "$MODEL_RUST_JSON"
+    fi
+    if [[ -f "$BACKUP/client-version.txt" ]]; then
+      cp "$BACKUP/client-version.txt" "$MODEL_CLIENT_VERSION"
+    else
+      rm -f "$MODEL_CLIENT_VERSION"
     fi
     if [[ -f "$BACKUP/CodexBuildMetadata.generated.swift" ]]; then
       cp "$BACKUP/CodexBuildMetadata.generated.swift" "$BUILD_METADATA_SWIFT"
@@ -185,12 +195,18 @@ PY
   echo "Official model catalog missing: $MODEL_SOURCE" >&2
   exit 66
 }
+[[ -f "$OFFICIAL_CARGO_TOML" ]] || {
+  echo "Official Codex Cargo.toml missing: $OFFICIAL_CARGO_TOML" >&2
+  exit 66
+}
 python3 "$MODEL_CATALOG_SCRIPT" \
   --source "$MODEL_SOURCE" \
   --version "$VERSION" \
   --json-output "$MODEL_JSON" \
   --swift-output "$MODEL_SWIFT" \
-  --rust-json-output "$MODEL_RUST_JSON"
+  --rust-json-output "$MODEL_RUST_JSON" \
+  --official-cargo-toml "$OFFICIAL_CARGO_TOML" \
+  --rust-client-version-output "$MODEL_CLIENT_VERSION"
 python3 "$BUILD_METADATA_SCRIPT" \
   --source "$SOURCE_RECORD" \
   --swift-output "$BUILD_METADATA_SWIFT"

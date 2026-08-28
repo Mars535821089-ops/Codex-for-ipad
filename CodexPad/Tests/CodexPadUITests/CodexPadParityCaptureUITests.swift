@@ -220,7 +220,7 @@ final class CodexPadParityCaptureUITests: XCTestCase {
         )
 
         apiKeyField.tap()
-        apiKeyField.typeText("test-key-codexpad-placeholder")
+        apiKeyField.typeText("sk-codexpad-ui-test-placeholder")
         let continueButton = readySurface.buttons.matching(
             NSPredicate(
                 format: "label == %@ OR label == %@",
@@ -915,7 +915,7 @@ final class CodexPadParityCaptureUITests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(apiKeyField.waitForExistence(timeout: 15))
         apiKeyField.tap()
-        apiKeyField.typeText("test-key-codexpad-placeholder")
+        apiKeyField.typeText("sk-codexpad-ui-test-placeholder")
         let continueButton = surface.buttons.matching(
             NSPredicate(
                 format: "label == %@ OR label == %@",
@@ -997,7 +997,7 @@ final class CodexPadParityCaptureUITests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(apiKeyField.waitForExistence(timeout: 15))
         apiKeyField.tap()
-        apiKeyField.typeText("test-key-codexpad-placeholder")
+        apiKeyField.typeText("sk-codexpad-ui-test-placeholder")
         let continueButton = surface.buttons.matching(
             NSPredicate(
                 format: "label == %@ OR label == %@",
@@ -1080,7 +1080,7 @@ final class CodexPadParityCaptureUITests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(apiKeyField.waitForExistence(timeout: 15))
         apiKeyField.tap()
-        apiKeyField.typeText("test-key-codexpad-placeholder")
+        apiKeyField.typeText("sk-codexpad-ui-test-placeholder")
         let continueButton = surface.buttons.matching(
             NSPredicate(format: "label == %@ OR label == %@", "Continue", "继续")
         ).firstMatch
@@ -1390,7 +1390,7 @@ final class CodexPadParityCaptureUITests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(apiKeyField.waitForExistence(timeout: 10))
         apiKeyField.tap()
-        apiKeyField.typeText("test-key-codexpad-placeholder")
+        apiKeyField.typeText("sk-codexpad-ui-test-placeholder")
         let continueButton = surface.buttons.matching(
             NSPredicate(
                 format: "label == %@ OR label == %@",

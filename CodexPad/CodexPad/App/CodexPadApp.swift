@@ -38,7 +38,7 @@ struct CodexPadApp: App {
             // Remove only that exact fixture; never delete or inspect any
             // other saved credential.
             if (try? apiKeyCredentialStore.load())
-                == "test-key-codexpad-placeholder"
+                == "sk-codexpad-ui-test-placeholder"
             {
                 try? apiKeyCredentialStore.delete()
             }

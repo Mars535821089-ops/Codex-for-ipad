@@ -71,8 +71,17 @@ class ModelCatalogGenerationTests(unittest.TestCase):
             source = root / "models.json"
             json_output = root / "version" / "model-catalog.json"
             rust_output = root / "CodexCore" / "resources" / "models.json"
+            rust_client_version_output = (
+                root / "CodexCore" / "resources" / "client-version.txt"
+            )
             swift_output = root / "CodexModelCatalog.generated.swift"
+            official_cargo = root / "official" / "codex-rs" / "Cargo.toml"
             source.write_text(json.dumps(fixture), encoding="utf-8")
+            official_cargo.parent.mkdir(parents=True)
+            official_cargo.write_text(
+                '[workspace.package]\nversion = "0.999.0-alpha.7"\n',
+                encoding="utf-8",
+            )
 
             subprocess.run(
                 [
@@ -86,6 +95,10 @@ class ModelCatalogGenerationTests(unittest.TestCase):
                     str(json_output),
                     "--rust-json-output",
                     str(rust_output),
+                    "--official-cargo-toml",
+                    str(official_cargo),
+                    "--rust-client-version-output",
+                    str(rust_client_version_output),
                     "--swift-output",
                     str(swift_output),
                 ],
@@ -117,6 +130,10 @@ class ModelCatalogGenerationTests(unittest.TestCase):
             self.assertEqual(visible["defaultServiceTier"], "priority")
             self.assertTrue(visible["isDefault"])
             self.assertEqual(json.loads(rust_output.read_text(encoding="utf-8")), fixture)
+            self.assertEqual(
+                rust_client_version_output.read_text(encoding="utf-8"),
+                "0.999.0-alpha.7",
+            )
             generated = swift_output.read_text(encoding="utf-8")
             self.assertIn('id: "gpt-visible"', generated)
             self.assertIn("defaultReasoningEffort: .low", generated)

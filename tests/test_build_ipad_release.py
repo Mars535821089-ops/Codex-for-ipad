@@ -379,12 +379,12 @@ class BuildIpadReleaseTests(unittest.TestCase):
                 identity,
                 team_id=TEAM_ID,
                 target_device_id=TARGET_DEVICE_ID,
-                install_device="Test iPad",
+                install_device="Mars iPad",
             )
 
             serialized = json.dumps(plan, sort_keys=True)
             self.assertNotIn(TARGET_DEVICE_ID, serialized)
-            self.assertNotIn("Test iPad", serialized)
+            self.assertNotIn("Mars iPad", serialized)
             self.assertEqual(plan["distributionMethod"], "debugging")
             self.assertEqual(
                 plan["archiveCommand"][
@@ -564,7 +564,7 @@ class BuildIpadReleaseTests(unittest.TestCase):
                 identity,
                 team_id=TEAM_ID,
                 target_device_id=TARGET_DEVICE_ID,
-                install_device="Test iPad",
+                install_device="Mars iPad",
                 command_runner=runner,
                 project_sync_checker=lambda _root, _identity: None,
                 now=dt.datetime(

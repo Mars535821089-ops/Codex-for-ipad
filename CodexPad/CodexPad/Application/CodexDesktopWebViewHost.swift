@@ -168,6 +168,53 @@ public enum CodexDesktopWebViewEntryDocument {
     }
 }
 
+/// Keeps the released renderer intact while adapting the one desktop-only
+/// authentication choice that cannot complete on iPadOS. The renderer already
+/// ships its full device-code UI and account/login protocol; only the primary
+/// ChatGPT button is redirected to that existing handler as the JavaScript
+/// resource is served to WKWebView.
+public enum CodexDesktopIPadLoginResourceAdapter {
+    private static let loginRoutePrefix = "login-route-"
+    private static let releasedPrimaryBinding =
+        "handleChatGptSignIn:P"
+    private static let deviceCodeBinding =
+        "handleChatGptDeviceCodeSignIn:I"
+    private static let streamlinedEntry =
+        "(t=(0,$t.jsx)(qt,{})"
+    private static let releasedDeviceCodeEntry =
+        "(t=(0,$t.jsx)(rt,{})"
+
+    public static func adapt(
+        _ data: Data,
+        resourceFilename: String
+    ) throws -> Data {
+        guard resourceFilename.hasPrefix(loginRoutePrefix),
+              resourceFilename.hasSuffix(".js"),
+              var source = String(data: data, encoding: .utf8),
+              source.contains(deviceCodeBinding),
+              source.contains(releasedPrimaryBinding),
+              source.contains(streamlinedEntry),
+              source.contains(releasedDeviceCodeEntry)
+        else {
+            return data
+        }
+
+        source = source.replacingOccurrences(
+            of: streamlinedEntry,
+            with: releasedDeviceCodeEntry
+        )
+        source = source.replacingOccurrences(
+            of: releasedPrimaryBinding,
+            with: "handleChatGptSignIn:I"
+        )
+        guard let adapted = source.data(using: .utf8) else {
+            throw CodexDesktopWebViewHostError
+                .invalidEntryDocumentEncoding
+        }
+        return adapted
+    }
+}
+
 public enum CodexDesktopWebViewAppResourceResolver {
     public static func entryRequestURL(
         contract: CodexDesktopWebViewContract = .official,
@@ -2537,6 +2584,12 @@ public enum CodexDesktopRendererLocationDiagnostic {
                     data = try CodexDesktopWebViewEntryDocument.prepare(
                         data,
                         contract: contract
+                    )
+                } else if resource.mimeType == "text/javascript" {
+                    data = try CodexDesktopIPadLoginResourceAdapter.adapt(
+                        data,
+                        resourceFilename:
+                            resource.fileURL.lastPathComponent
                     )
                 }
                 let response = URLResponse(

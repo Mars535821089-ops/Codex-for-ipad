@@ -10,7 +10,19 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const DEFAULT_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
-const CLIENT_VERSION: &str = "0.146.0";
+const CLIENT_VERSION: &str = include_str!("../resources/client-version.txt");
+
+fn client_version() -> &'static str {
+    CLIENT_VERSION.trim()
+}
+
+fn client_version_whole() -> String {
+    client_version()
+        .split('-')
+        .next()
+        .unwrap_or_default()
+        .to_string()
+}
 const CACHE_TTL_MS: u64 = 300_000;
 const CACHE_SCHEMA_VERSION: u32 = 1;
 
@@ -580,8 +592,9 @@ async fn fetch_models_async(
 
 fn models_endpoint(configuration: &ModelCatalogConfiguration) -> String {
     format!(
-        "{}/models?client_version={CLIENT_VERSION}",
-        configuration.base_url
+        "{}/models?client_version={}",
+        configuration.base_url,
+        client_version_whole()
     )
 }
 
@@ -607,7 +620,7 @@ fn cache_path(configuration: &ModelCatalogConfiguration) -> PathBuf {
         configuration.provider_id,
         configuration.account_identity.as_deref().unwrap_or(""),
         configuration.base_url,
-        CLIENT_VERSION
+        client_version_whole()
     );
     let partition = fnv1a64(identity.as_bytes());
     configuration
@@ -630,7 +643,9 @@ fn load_cache(configuration: &ModelCatalogConfiguration, now_ms: u64) -> Option<
     configuration.cache_directory.as_ref()?;
     let bytes = fs::read(cache_path(configuration)).ok()?;
     let record: CacheRecord = serde_json::from_slice(&bytes).ok()?;
-    if record.schema_version != CACHE_SCHEMA_VERSION || record.client_version != CLIENT_VERSION {
+    if record.schema_version != CACHE_SCHEMA_VERSION
+        || record.client_version != client_version_whole()
+    {
         return None;
     }
     Some(LoadedCache {
@@ -654,7 +669,7 @@ fn persist_cache(
     let temporary = path.with_extension("json.tmp");
     let record = CacheRecord {
         schema_version: CACHE_SCHEMA_VERSION,
-        client_version: CLIENT_VERSION.to_string(),
+        client_version: client_version_whole(),
         fetched_at_ms,
         etag: etag.map(ToOwned::to_owned),
         models: models.to_vec(),
@@ -757,13 +772,17 @@ mod tests {
         );
         let models = value["data"].as_array().expect("model data");
 
-        assert_eq!(models.len(), 5);
+        assert_eq!(models.len(), 7);
         assert_eq!(models[0]["id"], "gpt-5.6-sol");
         assert_eq!(models[0]["model"], "gpt-5.6-sol");
         assert_eq!(models[0]["isDefault"], true);
         assert_eq!(models[0]["supportsPersonality"], false);
         assert_eq!(models[3]["id"], "gpt-5.5");
         assert_eq!(models[3]["supportsPersonality"], true);
+        assert_eq!(models[4]["id"], "gpt-5.4");
+        assert_eq!(models[5]["id"], "gpt-5.4-mini");
+        assert_eq!(models[6]["id"], "gpt-5.3-codex-spark");
+        assert_eq!(models[6]["inputModalities"], json!(["text"]));
         assert_eq!(models[0]["defaultServiceTier"], serde_json::Value::Null);
         assert_eq!(
             models[0]["supportedReasoningEfforts"][5]["reasoningEffort"],
@@ -773,7 +792,7 @@ mod tests {
     }
 
     #[test]
-    fn hidden_filter_precedes_exact_official_pagination_rules() {
+    fn current_desktop_snapshot_obeys_exact_official_pagination_rules() {
         let mut catalog = ModelCatalog::default();
         let page = response(
             catalog
@@ -789,7 +808,7 @@ mod tests {
                     "model/list",
                     &json!({
                         "includeHidden": true,
-                        "cursor": "8",
+                        "cursor": "7",
                         "limit": 1
                     }),
                 )
@@ -803,7 +822,7 @@ mod tests {
             Err(crate::CoreError::InvalidArgument)
         );
         assert_eq!(
-            catalog.request("model/list", &json!({"includeHidden": true, "cursor": "9"})),
+            catalog.request("model/list", &json!({"includeHidden": true, "cursor": "8"})),
             Err(crate::CoreError::InvalidArgument)
         );
     }
@@ -929,11 +948,9 @@ mod tests {
         assert_eq!(cache_path(&first), cache_path(&second));
         assert_ne!(cache_path(&first), cache_path(&another_account));
         assert!(!format!("{first:?}").contains("first-secret"));
-        assert!(
-            !cache_path(&first)
-                .to_string_lossy()
-                .contains("first-secret")
-        );
+        assert!(!cache_path(&first)
+            .to_string_lossy()
+            .contains("first-secret"));
     }
 
     #[test]
@@ -964,7 +981,7 @@ mod tests {
 
         assert_eq!(
             models_endpoint(&config),
-            "https://chatgpt.com/backend-api/codex/models?client_version=0.146.0"
+            "https://chatgpt.com/backend-api/codex/models?client_version=0.150.0"
         );
     }
 
@@ -976,7 +993,7 @@ mod tests {
                 .expect("model/list through core"),
         );
         assert_eq!(listed["id"], "models");
-        assert_eq!(listed["result"]["data"].as_array().map(Vec::len), Some(5));
+        assert_eq!(listed["result"]["data"].as_array().map(Vec::len), Some(7));
 
         let capabilities = response(
             core.request(br#"{"id":42,"method":"modelProvider/capabilities/read","params":{}}"#)

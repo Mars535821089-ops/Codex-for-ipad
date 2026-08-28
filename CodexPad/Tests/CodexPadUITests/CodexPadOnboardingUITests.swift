@@ -8,7 +8,7 @@ final class CodexPadOnboardingUITests: XCTestCase {
     }
 
     @MainActor
-    func testColdLaunchShowsOfficialLoginAndKeepsAuthenticationInsideApp() {
+    func testColdLaunchRoutesPrimaryLoginThroughDeviceCodeInsideApp() {
         let app = XCUIApplication()
         app.launchEnvironment["CODEXPAD_UI_TEST_CREDENTIAL_NAMESPACE"] =
             "signed-out-browser-" + UUID().uuidString.lowercased()
@@ -40,9 +40,14 @@ final class CodexPadOnboardingUITests: XCTestCase {
 
         let continueButton = readySurface.buttons.matching(
             NSPredicate(
-                format: "label == %@ OR label == %@",
-                "Continue to sign in",
-                "继续登录"
+                format: "label IN %@",
+                [
+                    "Continue to sign in",
+                    "继续登录",
+                    "Sign in with ChatGPT",
+                    "使用 ChatGPT 登录",
+                    "通过 ChatGPT 登录",
+                ]
             )
         ).firstMatch
         XCTAssertTrue(
@@ -79,6 +84,16 @@ final class CodexPadOnboardingUITests: XCTestCase {
             readySurface.waitForExistence(timeout: 10),
             "Canceling authentication did not return to the released Codex surface."
         )
+        let deviceCodeLabel = readySurface.staticTexts.matching(
+            NSPredicate(
+                format: "label IN %@",
+                ["Device code", "设备代码", "设备码"]
+            )
+        ).firstMatch
+        XCTAssertTrue(
+            deviceCodeLabel.waitForExistence(timeout: 10),
+            "The primary iPad login action did not retain the released device-code flow after closing the browser."
+        )
     }
 
     @MainActor
@@ -111,9 +126,11 @@ final class CodexPadOnboardingUITests: XCTestCase {
 
         let anotherWayButton = readySurface.buttons.matching(
             NSPredicate(
-                format: "label == %@ OR label == %@",
+                format: "label == %@ OR label == %@ OR label == %@ OR label == %@",
                 "Sign in another way",
-                "使用其他方式登录"
+                "使用其他方式登录",
+                "Use API key",
+                "使用 API 密钥"
             )
         ).firstMatch
         XCTAssertTrue(
@@ -163,9 +180,11 @@ final class CodexPadOnboardingUITests: XCTestCase {
 
         let anotherWayButton = readySurface.buttons.matching(
             NSPredicate(
-                format: "label == %@ OR label == %@",
+                format: "label == %@ OR label == %@ OR label == %@ OR label == %@",
                 "Sign in another way",
-                "使用其他方式登录"
+                "使用其他方式登录",
+                "Use API key",
+                "使用 API 密钥"
             )
         ).firstMatch
         XCTAssertTrue(
@@ -186,13 +205,15 @@ final class CodexPadOnboardingUITests: XCTestCase {
             "The released API-key form did not expose its credential field."
         )
         apiKeyField.tap()
-        apiKeyField.typeText("test-key-codexpad-placeholder")
+        apiKeyField.typeText("sk-codexpad-ui-test-placeholder")
 
         let continueButton = readySurface.buttons.matching(
             NSPredicate(
-                format: "label == %@ OR label == %@",
+                format: "label == %@ OR label == %@ OR label == %@ OR label == %@",
                 "Continue",
-                "继续"
+                "继续",
+                "OK",
+                "确定"
             )
         ).firstMatch
         XCTAssertTrue(
@@ -431,6 +452,96 @@ final class CodexPadOnboardingUITests: XCTestCase {
     }
 
     @MainActor
+    func testPhysicalModelSelectorMatchesCurrentDesktopVisibleCatalog() {
+        let app = XCUIApplication()
+        // This is a read-only physical-device parity check. Reuse the
+        // already signed-in production Keychain state so the assertion sees
+        // the exact model selector the owner sees; do not create a thread,
+        // project, or test credential.
+        if app.state != .notRunning {
+            app.terminate()
+        }
+        app.launch()
+        XCTAssertTrue(
+            app.wait(for: .runningForeground, timeout: releasedSurfaceBudget)
+        )
+        let readySurface = app.webViews["CodexDesktopSurfaceReady"]
+        XCTAssertTrue(
+            readySurface.waitForExistence(timeout: releasedSurfaceBudget),
+            "The signed-in physical iPad did not reach the released surface."
+        )
+        XCTAssertTrue(
+            releasedSignedInMarker(in: readySurface).waitForExistence(timeout: 30),
+            "The physical iPad did not retain its signed-in workspace."
+        )
+
+        let modelSelector = readySurface.descendants(matching: .any)
+            .matching(
+                NSPredicate(
+                    format: "label CONTAINS[c] %@",
+                    "5.6 Sol"
+                )
+            ).firstMatch
+        XCTAssertTrue(
+            modelSelector.waitForExistence(timeout: 10),
+            "The physical iPad did not expose the current default model selector."
+        )
+        modelSelector.tap()
+
+        let modelSubmenu = app.descendants(matching: .any)
+            .matching(
+                NSPredicate(
+                    format: "label BEGINSWITH[c] %@",
+                    "模型 5.6 Sol"
+                )
+            ).firstMatch
+        XCTAssertTrue(
+            modelSubmenu.waitForExistence(timeout: 10),
+            "The released settings popover did not expose its model submenu."
+        )
+        modelSubmenu.tap()
+
+        let expectedLabels = [
+            "5.6 Sol",
+            "5.6 Terra",
+            "5.6 Luna",
+            "5.5",
+            "5.4",
+            "5.4 Mini",
+            "5.3 Codex Spark",
+        ]
+        for label in expectedLabels {
+            let item = app.descendants(matching: .any)
+                .matching(
+                    NSPredicate(
+                        format: "label CONTAINS[c] %@",
+                        label
+                    )
+                ).firstMatch
+            XCTAssertTrue(
+                item.waitForExistence(timeout: 5),
+                "The physical iPad model selector omitted \(label)."
+            )
+        }
+        XCTAssertFalse(
+            app.descendants(matching: .any)
+                .matching(
+                    NSPredicate(
+                        format: "label == %@ OR label == %@",
+                        "5.2",
+                        "GPT-5.2"
+                    )
+                ).firstMatch.exists,
+            "The physical iPad model selector still exposed retired GPT-5.2."
+        )
+
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Physical iPad current desktop model catalog"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    @MainActor
     func testAuthenticatedReleasedPrimaryNavigationButtonsOpenTheirDesktopSurfaces() {
         let app = XCUIApplication()
         let readySurface = signIntoReleasedSurfaceWithPlaceholder(in: app)
@@ -616,7 +727,7 @@ final class CodexPadOnboardingUITests: XCTestCase {
             app.wait(for: .runningForeground, timeout: releasedSurfaceBudget)
         )
 
-        let readySurface = app.webViews["CodexDesktopSurfaceReady"]
+        var readySurface = app.webViews["CodexDesktopSurfaceReady"]
         XCTAssertTrue(
             readySurface.waitForExistence(timeout: releasedSurfaceBudget),
             "The forced signed-out run did not reach the released surface."
@@ -624,9 +735,11 @@ final class CodexPadOnboardingUITests: XCTestCase {
 
         let anotherWayButton = readySurface.buttons.matching(
             NSPredicate(
-                format: "label == %@ OR label == %@",
+                format: "label == %@ OR label == %@ OR label == %@ OR label == %@",
                 "Sign in another way",
-                "使用其他方式登录"
+                "使用其他方式登录",
+                "Use API key",
+                "使用 API 密钥"
             )
         ).firstMatch
         XCTAssertTrue(
@@ -647,13 +760,15 @@ final class CodexPadOnboardingUITests: XCTestCase {
             "The released API-key form did not expose its credential field."
         )
         apiKeyField.tap()
-        apiKeyField.typeText("test-key-codexpad-placeholder")
+        apiKeyField.typeText("sk-codexpad-ui-test-placeholder")
 
         let continueButton = readySurface.buttons.matching(
             NSPredicate(
-                format: "label == %@ OR label == %@",
+                format: "label == %@ OR label == %@ OR label == %@ OR label == %@",
                 "Continue",
-                "继续"
+                "继续",
+                "OK",
+                "确定"
             )
         ).firstMatch
         XCTAssertTrue(
@@ -662,10 +777,29 @@ final class CodexPadOnboardingUITests: XCTestCase {
         )
         continueButton.tap()
 
+        if !releasedAuthenticationSuccessMarker(in: readySurface)
+            .waitForExistence(timeout: 10)
+        {
+            // The released renderer may remain on its account-transition
+            // splash after accepting the key. Verify the same persisted
+            // credential through the product's cold-launch restoration path.
+            app.terminate()
+            XCTAssertTrue(app.wait(for: .notRunning, timeout: 10))
+            app.launchEnvironment["CODEXPAD_UI_TEST_FORCE_SIGNED_OUT"] = "0"
+            app.launch()
+            XCTAssertTrue(
+                app.wait(for: .runningForeground, timeout: releasedSurfaceBudget)
+            )
+            readySurface = app.webViews["CodexDesktopSurfaceReady"]
+            XCTAssertTrue(
+                readySurface.waitForExistence(timeout: releasedSurfaceBudget),
+                "Cold relaunch did not restore the released surface after API-key login."
+            )
+        }
         XCTAssertTrue(
             releasedAuthenticationSuccessMarker(in: readySurface)
-                .waitForExistence(timeout: 30),
-            "Submitting an API key did not enter the released authenticated flow."
+                .waitForExistence(timeout: 45),
+            "The persisted API key did not enter the released authenticated flow."
         )
         completeReleasedWelcomeIfNeeded(in: readySurface)
         XCTAssertTrue(

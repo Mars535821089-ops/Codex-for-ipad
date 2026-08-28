@@ -209,6 +209,35 @@ func desktopExternalURLOpenerPresentsReleasedOAuthAuthorizeInApp() {
 
 @MainActor
 @Test
+func desktopExternalURLOpenerPresentsReleasedDeviceVerificationInApp() {
+    let authURL = "https://auth.openai.com/codex/device"
+    let authenticationBrowser = RecordingAuthenticationBrowser()
+    var systemURLs: [String] = []
+    let opener = CodexDesktopExternalURLOpener(
+        authenticationBrowser: authenticationBrowser
+    ) { url in
+        systemURLs.append(url.absoluteString)
+    }
+
+    let accepted = opener.open(
+        CodexDesktopOpenInBrowserRequest(
+            url: authURL,
+            initiator: "open_in_browser_bridge",
+            openTarget: "external-browser",
+            source: "login"
+        )
+    )
+
+    #expect(accepted)
+    #expect(
+        authenticationBrowser.presentedURLs.map(\.absoluteString)
+            == [authURL]
+    )
+    #expect(systemURLs.isEmpty)
+}
+
+@MainActor
+@Test
 func desktopExternalURLOpenerKeepsOAuthNearMissesInSystemBrowser() {
     let requestedURLs = [
         "http://auth.openai.com/oauth/authorize?state=state-1",

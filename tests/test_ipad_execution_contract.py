@@ -374,7 +374,7 @@ class IPadExecutionContractTests(unittest.TestCase):
         onboarding = ONBOARDING_UI_TESTS.read_text(encoding="utf-8")
 
         for method in (
-            "testColdLaunchShowsOfficialLoginAndKeepsAuthenticationInsideApp",
+            "testColdLaunchRoutesPrimaryLoginThroughDeviceCodeInsideApp",
             "testColdLaunchExpandsOfficialAPIKeySignInWithoutSubmittingCredentials",
             "testSignedOutSurfaceExposesTheReleasedLoginButtonInventory",
         ):
@@ -444,7 +444,7 @@ class IPadExecutionContractTests(unittest.TestCase):
     ) -> None:
         onboarding = ONBOARDING_UI_TESTS.read_text(encoding="utf-8")
         start = onboarding.index(
-            "func testColdLaunchShowsOfficialLoginAndKeepsAuthenticationInsideApp()"
+            "func testColdLaunchRoutesPrimaryLoginThroughDeviceCodeInsideApp()"
         )
         end = onboarding.index(
             "func testColdLaunchExpandsOfficialAPIKeySignInWithoutSubmittingCredentials()",
@@ -1110,7 +1110,7 @@ class IPadExecutionContractTests(unittest.TestCase):
             text,
         )
         self.assertIn(
-            'apiKeyField.typeText("test-key-codexpad-placeholder")',
+            'apiKeyField.typeText("sk-codexpad-ui-test-placeholder")',
             text,
         )
         self.assertNotIn("CodexSurfaces", text)

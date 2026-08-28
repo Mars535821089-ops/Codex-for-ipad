@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -397,7 +398,16 @@ def main() -> int:
     parser.add_argument("--json-output", type=Path, required=True)
     parser.add_argument("--swift-output", type=Path, required=True)
     parser.add_argument("--rust-json-output", type=Path)
+    parser.add_argument("--official-cargo-toml", type=Path)
+    parser.add_argument("--rust-client-version-output", type=Path)
     args = parser.parse_args()
+
+    if (args.official_cargo_toml is None) != (
+        args.rust_client_version_output is None
+    ):
+        raise ValueError(
+            "official Cargo.toml and Rust client-version output must be provided together"
+        )
 
     raw_source = args.source.read_bytes()
     document = json.loads(raw_source)
@@ -434,6 +444,25 @@ def main() -> int:
     if args.rust_json_output is not None:
         args.rust_json_output.parent.mkdir(parents=True, exist_ok=True)
         args.rust_json_output.write_bytes(raw_source)
+    if args.official_cargo_toml is not None:
+        cargo_text = args.official_cargo_toml.read_text(encoding="utf-8")
+        workspace_package = re.search(
+            r"(?ms)^\[workspace\.package\]\s*(.*?)(?=^\[|\Z)",
+            cargo_text,
+        )
+        if workspace_package is None:
+            raise ValueError("official Cargo.toml has no workspace.package table")
+        version_match = re.search(
+            r'(?m)^version\s*=\s*"([^"]+)"\s*$',
+            workspace_package.group(1),
+        )
+        if version_match is None:
+            raise ValueError("official Cargo.toml has no workspace package version")
+        client_version = version_match.group(1)
+        if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?", client_version) is None:
+            raise ValueError("official Codex client version is malformed")
+        args.rust_client_version_output.parent.mkdir(parents=True, exist_ok=True)
+        args.rust_client_version_output.write_text(client_version, encoding="utf-8")
     return 0
 
 

@@ -477,7 +477,7 @@ func remoteControlHTTPClientListUsesExactQueryAndMapsBackendWire()
                   "items": [
                     {
                       "client_id": "client-1",
-                      "display_name": "Test iPad",
+                      "display_name": "Mars iPad",
                       "device_type": "tablet",
                       "platform": "iPadOS",
                       "os_version": "18.0",
@@ -510,7 +510,7 @@ func remoteControlHTTPClientListUsesExactQueryAndMapsBackendWire()
     #expect(response.data.count == 1)
     let client = try #require(response.data.first)
     #expect(client.clientId == "client-1")
-    #expect(client.displayName == "Test iPad")
+    #expect(client.displayName == "Mars iPad")
     #expect(client.deviceType == "tablet")
     #expect(client.platform == "iPadOS")
     #expect(client.osVersion == "18.0")

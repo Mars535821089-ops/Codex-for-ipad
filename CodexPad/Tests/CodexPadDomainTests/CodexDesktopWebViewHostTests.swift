@@ -67,6 +67,42 @@ func desktopWebViewContractPinsTheReleasedRendererHostBoundary() {
 }
 
 @Test
+func desktopIPadLoginAdapterRoutesReleasedEntryAndPrimaryActionToDeviceCode()
+    throws
+{
+    let releasedLoginRoute = #"""
+    let P=N,F=async()=>{},I=F;
+    const primary={handleChatGptSignIn:P,isChatGptSignInPending:c};
+    const secondary={handleChatGptDeviceCodeSignIn:I};
+    function Zt(){let e=(0,Qt.c)(3);{let t;return e[1]===Symbol.for(`react.memo_cache_sentinel`)?(t=(0,$t.jsx)(qt,{}),e[1]=t):t=e[1],t}let t;return e[2]===Symbol.for(`react.memo_cache_sentinel`)?(t=(0,$t.jsx)(rt,{}),e[2]=t):t=e[2],t}
+    """#
+
+    let adapted = try CodexDesktopIPadLoginResourceAdapter.adapt(
+        Data(releasedLoginRoute.utf8),
+        resourceFilename: "login-route-3tZFeNXg.js"
+    )
+    let source = try #require(String(data: adapted, encoding: .utf8))
+
+    #expect(source.contains("handleChatGptSignIn:I"))
+    #expect(!source.contains("handleChatGptSignIn:P"))
+    #expect(source.contains("handleChatGptDeviceCodeSignIn:I"))
+    #expect(!source.contains("(t=(0,$t.jsx)(qt,{})"))
+    #expect(source.contains("(t=(0,$t.jsx)(rt,{})"))
+}
+
+@Test
+func desktopIPadLoginAdapterLeavesUnrelatedJavaScriptUntouched() throws {
+    let source = Data("const route = 'settings';".utf8)
+
+    let adapted = try CodexDesktopIPadLoginResourceAdapter.adapt(
+        source,
+        resourceFilename: "settings-route.js"
+    )
+
+    #expect(adapted == source)
+}
+
+@Test
 func desktopWebViewResourceLocatorKeepsReadAccessAtTheSurfaceDirectory()
     throws
 {
