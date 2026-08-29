@@ -22,11 +22,11 @@ struct CodexPadApp: App {
         let apiKeyCredentialStore: CodexAPIKeyCredentialStore
         if let credentialNamespace, !credentialNamespace.isEmpty {
             credentialStore = CodexCredentialStore(
-                service: "dev.codexforipad.chatgpt.ui-test."
+                service: "com.mars.codex-for-ipad.chatgpt.ui-test."
                     + credentialNamespace
             )
             apiKeyCredentialStore = CodexAPIKeyCredentialStore(
-                service: "dev.codexforipad.openai.ui-test."
+                service: "com.mars.codex-for-ipad.openai.ui-test."
                     + credentialNamespace
             )
         } else {

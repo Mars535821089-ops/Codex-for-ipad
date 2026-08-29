@@ -12,7 +12,7 @@
 
 - 项目根目录固定为 `/Users/you/projects/Codex-持续更新逆向Ipad版`。
 - 当前官方基线固定为 `26.721.41059`（build `5848`），本阶段不得把其他版本写入 App 元数据。
-- iPad target 的 bundle identifier 固定为 `dev.codexforipad.app`，`TARGETED_DEVICE_FAMILY` 固定为 `2`，deployment target 固定为 `18.0`。
+- iPad target 的 bundle identifier 固定为 `com.mars.codexpad`，`TARGETED_DEVICE_FAMILY` 固定为 `2`，deployment target 固定为 `18.0`。
 - App 必须在无 Mac、无远程执行机、无远程桌面的运行架构下启动；本阶段不接入任何远程执行依赖。
 - 不创建演示 Workspace、Thread、聊天内容、缩略图或统计数据；首次启动显示真实空状态。
 - UI 只消费领域状态；所有可持久事件带 `sequence`，重复或旧 sequence 必须被忽略，跳号必须显式报告。
@@ -80,7 +80,7 @@ class GenerateCodexPadProjectTests(unittest.TestCase):
             )
             output = generate_project(root)
             project = output.read_text()
-        self.assertIn("PRODUCT_BUNDLE_IDENTIFIER = dev.codexforipad.app;", project)
+        self.assertIn("PRODUCT_BUNDLE_IDENTIFIER = com.mars.codexpad;", project)
         self.assertIn("TARGETED_DEVICE_FAMILY = 2;", project)
         self.assertIn("IPHONEOS_DEPLOYMENT_TARGET = 18.0;", project)
         self.assertIn("CODE_SIGNING_ALLOWED = NO;", project)
@@ -483,7 +483,7 @@ plutil -extract CFBundleIdentifier raw "$APP/Info.plist"
 plutil -extract CFBundleDisplayName raw "$APP/Info.plist"
 ```
 
-Expected metadata: `dev.codexforipad.app` and `Codex`.
+Expected metadata: `com.mars.codexpad` and `Codex`.
 
 - [ ] **Step 4: Verify the parity gate still blocks and write the report**
 

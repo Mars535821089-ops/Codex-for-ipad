@@ -440,7 +440,7 @@ public struct CodexMCPOAuthCredentialStore:
     private let service: String
 
     public init(
-        service: String = "dev.codexforipad.mcp-oauth"
+        service: String = "com.mars.codex-for-ipad.mcp-oauth"
     ) {
         self.service = service
     }

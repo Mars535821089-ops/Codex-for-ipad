@@ -2444,24 +2444,6 @@ private struct CodexWireObject {
         }
     }
 
-    func requiredNullableString(_ key: String) throws -> String? {
-        switch try requiredValue(key) {
-        case .null:
-            return nil
-        case let .string(value):
-            return value
-        default:
-            throw invalid(key, "Expected a string or null")
-        }
-    }
-
-    func requiredBool(_ key: String) throws -> Bool {
-        guard case let .bool(value) = try requiredValue(key) else {
-            throw invalid(key, "Expected a boolean")
-        }
-        return value
-    }
-
     func requiredNullableBool(_ key: String) throws -> Bool? {
         switch try requiredValue(key) {
         case .null:
@@ -2628,16 +2610,6 @@ private struct CodexWireObject {
         return try requiredEnum(type, for: key)
     }
 
-    func requiredNullableEnum<Value>(
-        _ type: Value.Type,
-        for key: String
-    ) throws -> Value? where Value: RawRepresentable, Value.RawValue == String {
-        if case .null = try requiredValue(key) {
-            return nil
-        }
-        return try requiredEnum(type, for: key)
-    }
-
     private func number(
         _ value: CodexJSONValue,
         key: String,
@@ -2667,25 +2639,6 @@ private struct CodexWireObject {
 }
 
 private extension KeyedDecodingContainer {
-    func decodeRequiredNullable<Value>(
-        _ type: Value.Type,
-        forKey key: Key
-    ) throws -> Value? where Value: Decodable {
-        guard contains(key) else {
-            throw DecodingError.keyNotFound(
-                key,
-                .init(
-                    codingPath: codingPath,
-                    debugDescription: "Missing required nullable field"
-                )
-            )
-        }
-        if try decodeNil(forKey: key) {
-            return nil
-        }
-        return try decode(type, forKey: key)
-    }
-
     func decodeWireOptional<Value>(
         _ type: Value.Type,
         forKey key: Key
@@ -2703,17 +2656,6 @@ private extension KeyedDecodingContainer {
 }
 
 private extension KeyedEncodingContainer {
-    mutating func encodeRequiredNullable<Value>(
-        _ value: Value?,
-        forKey key: Key
-    ) throws where Value: Encodable {
-        if let value {
-            try encode(value, forKey: key)
-        } else {
-            try encodeNil(forKey: key)
-        }
-    }
-
     mutating func encodeWireOptional<Value>(
         _ value: CodexWireOptional<Value>,
         forKey key: Key

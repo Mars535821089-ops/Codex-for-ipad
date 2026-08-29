@@ -534,7 +534,7 @@ class GenerateCodexPadProjectTests(unittest.TestCase):
             project = output.read_text(encoding="utf-8")
 
         self.assertIn(
-            "PRODUCT_BUNDLE_IDENTIFIER = dev.codexforipad.app;", project
+            "PRODUCT_BUNDLE_IDENTIFIER = com.mars.codexpad;", project
         )
         self.assertIn("TARGETED_DEVICE_FAMILY = 2;", project)
         self.assertIn("IPHONEOS_DEPLOYMENT_TARGET = 18.0;", project)
@@ -546,7 +546,7 @@ class GenerateCodexPadProjectTests(unittest.TestCase):
             2,
         )
         self.assertIn("CODE_SIGN_STYLE = Automatic;", project)
-        self.assertNotIn("DEVELOPMENT_TEAM =", project)
+        self.assertIn("DEVELOPMENT_TEAM = XXXXXXXXXX;", project)
         self.assertIn("ProvisioningStyle = Automatic;", project)
         self.assertNotIn("CODE_SIGNING_ALLOWED = NO;", project)
         self.assertEqual(project.count("SUPPORTS_MACCATALYST = NO;"), 2)
@@ -586,7 +586,7 @@ class GenerateCodexPadProjectTests(unittest.TestCase):
         self.assertEqual(project.count("PRODUCT_NAME = CodexPadUITests;"), 2)
         self.assertEqual(
             project.count(
-                "PRODUCT_BUNDLE_IDENTIFIER = dev.codexforipad.app.ui-tests;"
+                "PRODUCT_BUNDLE_IDENTIFIER = com.mars.codexpad.ui-tests;"
             ),
             2,
         )

@@ -846,7 +846,7 @@ struct CodexSurfaceTerminalView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("$ pwd")
                         .foregroundStyle(.secondary)
-                    Text("/Users/example/projects/Codex-持续更新逆向Ipad版")
+                    Text("/Users/you/projects/Codex-持续更新逆向Ipad版")
                     Text("$ ls -1")
                     Text("CodexPad")
                     Text("CodexCore")
@@ -861,7 +861,7 @@ struct CodexSurfaceTerminalView: View {
                             .foregroundStyle(.orange)
                     }
                     if workspaceMismatch {
-                        Text("Workspace mismatch — restore from /Users/example")
+                        Text("Workspace mismatch — restore from /Users/mars")
                             .foregroundStyle(.red)
                     }
                 }

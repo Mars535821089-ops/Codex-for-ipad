@@ -25,8 +25,8 @@ class ConfigureAutoUpdateRuntimeTests(unittest.TestCase):
             agents = home / "Library" / "LaunchAgents"
             agents.mkdir(parents=True)
             old = [
-                agents / "dev.codexforipad.autoupdate.plist",
-                agents / "dev.codexforipad.ipad-request-poller.plist",
+                agents / "com.mars.codex-for-ipad.autoupdate.plist",
+                agents / "com.mars.codex-for-ipad.ipad-request-poller.plist",
             ]
             for path in old:
                 path.write_text("legacy", encoding="utf-8")

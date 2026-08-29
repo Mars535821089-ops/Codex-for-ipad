@@ -46,7 +46,7 @@ class MergeIPadObservedParityTests(unittest.TestCase):
             "testIdentifier": f"ParityTests/test{surface_id}()",
             "configurationName": "Test Scheme Action",
             "deviceId": device_id,
-            "deviceName": "Mars iPad Pro",
+            "deviceName": "Example iPad Pro",
             "timestamp": 1_700_000_000,
             "interactionInventory": {
                 "controlCount": 1,
@@ -62,7 +62,7 @@ class MergeIPadObservedParityTests(unittest.TestCase):
             "desktopVersion": "26.810.52044",
             "desktopBuild": "6662",
             "deviceId": device_id,
-            "deviceName": "Mars iPad Pro",
+            "deviceName": "Example iPad Pro",
             "observedSurfaceIds": [surface_id],
             "missingSurfaceIds": [
                 candidate for candidate in surfaces if candidate != surface_id
@@ -75,7 +75,7 @@ class MergeIPadObservedParityTests(unittest.TestCase):
                 "testIdentifier": f"ParityTests/test{surface_id}()",
                 "configurationName": "Test Scheme Action",
                 "deviceId": device_id,
-                "deviceName": "Mars iPad Pro",
+                "deviceName": "Example iPad Pro",
                 "timestamp": 1_700_000_000,
             },
             "surfaces": surfaces,

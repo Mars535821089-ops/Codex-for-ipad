@@ -154,7 +154,7 @@ func remoteControlWebSocketRequestUsesOfficialURLAndHeaders() throws {
             string: "https://chatgpt.com/backend-api/"
         )!,
         enrollment: remoteWebSocketEnrollment,
-        serverName: "Mars iPad 电影机",
+        serverName: "Example iPad",
         installationID: "installation-1",
         subscribeCursor: "cursor-7"
     )
@@ -170,7 +170,7 @@ func remoteControlWebSocketRequestUsesOfficialURLAndHeaders() throws {
     )
     #expect(
         request.value(forHTTPHeaderField: "x-codex-name")
-            == Data("Mars iPad 电影机".utf8).base64EncodedString()
+            == Data("Example iPad".utf8).base64EncodedString()
     )
     #expect(
         request.value(forHTTPHeaderField: "x-codex-protocol-version")

@@ -12,19 +12,13 @@ VERSION = "26.721.81911"
 
 class FeatureInventoryEvidenceTests(unittest.TestCase):
     def setUp(self) -> None:
-        inventory_path = (
-            ROOT
-            / "versions"
-            / VERSION
-            / "feature-inventory.json"
-        )
-        if not inventory_path.is_file():
-            self.skipTest(
-                "official reverse-engineering evidence is not distributed "
-                "in the public source repository"
-            )
         self.inventory = json.loads(
-            inventory_path.read_text(encoding="utf-8")
+            (
+                ROOT
+                / "versions"
+                / VERSION
+                / "feature-inventory.json"
+            ).read_text(encoding="utf-8")
         )
         self.features = {
             feature["id"]: feature

@@ -18,7 +18,7 @@
 - 本阶段的 `ping`/`pong` 是 ABI 冒烟契约，不作为 Codex 功能矩阵完成证据，不创建演示 Workspace 或 Thread。
 - XCFramework 输出固定为 `build/CodexCore.xcframework`，`build/` 保持 Git ignored。
 - 支持 `aarch64-apple-ios`、`aarch64-apple-ios-sim`、`x86_64-apple-ios`；Simulator slice 必须为 arm64+x86_64 universal archive。
-- Xcode App 继续 `TARGETED_DEVICE_FAMILY = 2`、deployment target `18.0`、bundle ID `dev.codexforipad.app`、默认不签名。
+- Xcode App 继续 `TARGETED_DEVICE_FAMILY = 2`、deployment target `18.0`、bundle ID `com.mars.codexpad`、默认不签名。
 - 源码、测试、日志、报告和生成物不得包含 API key、Cookie、token、签名身份、Team ID 或 provisioning profile。
 - 当前无可用 Simulator device；只声明 generic Simulator 编译与 ABI 单元测试，不声明启动、截图或真机运行。
 

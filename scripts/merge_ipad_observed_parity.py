@@ -121,7 +121,6 @@ def merge_observed_manifests(
                     image_path = (source_path.parent / image_name).resolve()
                     if image_path.parent != source_path.parent:
                         raise ValueError("observed capture escapes manifest directory")
-                    destination_name = f"{surface_id}-{key}-ipad.png"
                     observation_name = (
                         f"observations/{surface_id}-{key}-{image_sha[:16]}.png"
                     )

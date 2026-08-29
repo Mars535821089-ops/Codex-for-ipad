@@ -17,7 +17,7 @@ import zipfile
 
 
 PRODUCT_NAME = "Codex for ipad"
-BUNDLE_IDENTIFIER = "dev.codexforipad.app"
+BUNDLE_IDENTIFIER = "com.mars.codexpad"
 
 
 def load_object(path: Path, *, label: str) -> dict[str, Any]:

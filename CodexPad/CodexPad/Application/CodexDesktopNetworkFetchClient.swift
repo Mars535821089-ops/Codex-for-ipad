@@ -1297,7 +1297,7 @@ public struct CodexDesktopNetworkFetchClient: Sendable {
         headers: [String: String]
     ) async throws {
         let bundleID =
-            Bundle.main.bundleIdentifier ?? "dev.codexforipad.app"
+            Bundle.main.bundleIdentifier ?? "com.mars.codexpad"
         let body = try JSONSerialization.data(
             withJSONObject: [
                 "bundle_id": bundleID,

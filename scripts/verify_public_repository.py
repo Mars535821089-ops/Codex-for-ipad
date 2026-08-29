@@ -30,7 +30,7 @@ VENDORED_CONTENT_PARTS = {"node_modules", "vendor"}
 BLOCKED_CONTENT = {
     "personal home path": re.compile(rb"/Users/[A-Za-z0-9._-]+/"),
     "project signing team": re.compile(
-        rb"DEVELOPMENT_TEAM\\s*=\\s*[A-Z0-9]{10}"
+        rb"DEVELOPMENT_TEAM\s*=\s*[A-Z0-9]{10}"
     ),
     "physical device identifier": re.compile(
         rb"(?<![0-9A-F])[0-9A-F]{8}-[0-9A-F]{16}(?![0-9A-F])"
@@ -46,6 +46,9 @@ BLOCKED_CONTENT = {
 }
 
 SYNTHETIC_CONTENT = {
+    "project signing team": {
+        b"DEVELOPMENT_TEAM = XXXXXXXXXX",
+    },
     "personal home path": {
         b"/Users/you/",
         b"/Users/example/",

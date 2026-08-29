@@ -27,7 +27,7 @@ public struct CodexGitCredentialStore: Sendable {
     private let account: String
 
     public init(
-        service: String = "dev.codexforipad.git",
+        service: String = "com.mars.codex-for-ipad.git",
         account: String = "default"
     ) {
         self.service = service
@@ -230,7 +230,7 @@ public struct CodexCredentialStore: Sendable {
     private let makeRevision: @Sendable () -> String
 
     public init(
-        service: String = "dev.codexforipad.chatgpt",
+        service: String = "com.mars.codex-for-ipad.chatgpt",
         account: String = "oauth-tokens"
     ) {
         self.service = service
@@ -467,7 +467,7 @@ public struct CodexAPIKeyCredentialStore: Sendable {
     private let keychain: any CodexCredentialKeychain
 
     public init(
-        service: String = "dev.codexforipad.openai",
+        service: String = "com.mars.codex-for-ipad.openai",
         account: String = "api-key"
     ) {
         self.service = service

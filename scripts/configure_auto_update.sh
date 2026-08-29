@@ -6,8 +6,8 @@ set -euo pipefail
 # or removes an upgrade package in the background.
 AUTOMATIC_UPDATE_DISABLED=1
 
-LABEL="dev.codexforipad.autoupdate"
-REQUEST_LABEL="dev.codexforipad.ipad-request-poller"
+LABEL="com.mars.codex-for-ipad.autoupdate"
+REQUEST_LABEL="com.mars.codex-for-ipad.ipad-request-poller"
 AGENT="$HOME/Library/LaunchAgents/$LABEL.plist"
 REQUEST_AGENT="$HOME/Library/LaunchAgents/$REQUEST_LABEL.plist"
 

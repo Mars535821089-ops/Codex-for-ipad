@@ -342,7 +342,7 @@
         @ObservationIgnored
         private let logger = Logger(
             subsystem: Bundle.main.bundleIdentifier
-                ?? "dev.codexforipad.app",
+                ?? "com.mars.codexpad",
             category: "DesktopSurface"
         )
 

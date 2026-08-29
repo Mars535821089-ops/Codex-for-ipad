@@ -19,7 +19,7 @@
 - Reject missing references and duplicate workspace/thread/turn/item IDs before enqueuing any partial event batch.
 - Swift UI consumes only `CodexSessionStore.state`; it does not read C buffers or Rust state.
 - Do not add persistence, network/model calls, tool execution, signing, or device-install claims in this phase.
-- Keep `TARGETED_DEVICE_FAMILY = 2`, deployment target `18.0`, bundle ID `dev.codexforipad.app`, and unsigned default builds.
+- Keep `TARGETED_DEVICE_FAMILY = 2`, deployment target `18.0`, bundle ID `com.mars.codexpad`, and unsigned default builds.
 - No credential, token, Cookie, signing identity, Team ID, or provisioning profile may enter source, logs, fixtures, or reports.
 - Existing feature-inventory rows remain `unknown` until Simulator, physical-device, and protocol-parity evidence exists.
 

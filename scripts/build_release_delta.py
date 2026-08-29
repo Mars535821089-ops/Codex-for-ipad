@@ -10,10 +10,9 @@ chunk-hash references before reporting a product change.
 from __future__ import annotations
 
 import argparse
-from collections import Counter, defaultdict
+from collections import defaultdict
 import copy
 import hashlib
-import json
 from pathlib import Path
 import re
 import sys

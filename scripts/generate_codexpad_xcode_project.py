@@ -854,6 +854,7 @@ def _build_settings(
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = CodexPad/Resources/CodexPad.entitlements;
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = XXXXXXXXXX;
 				CURRENT_PROJECT_VERSION = {desktop_build};
 {python_settings}\
 				ENABLE_PREVIEWS = YES;
@@ -869,7 +870,7 @@ def _build_settings(
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MARKETING_VERSION = {desktop_version};
 				OTHER_LDFLAGS = "$(inherited) -lz -liconv -framework Security -framework CoreFoundation";
-				PRODUCT_BUNDLE_IDENTIFIER = dev.codexforipad.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mars.codexpad;
 				PRODUCT_NAME = "Codex for ipad";
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -891,9 +892,10 @@ def _ui_test_build_settings(configuration: str) -> str:
     )
     return f"""\
 					CODE_SIGN_STYLE = Automatic;
+					DEVELOPMENT_TEAM = XXXXXXXXXX;
 					GENERATE_INFOPLIST_FILE = YES;
 					IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-					PRODUCT_BUNDLE_IDENTIFIER = dev.codexforipad.app.ui-tests;
+					PRODUCT_BUNDLE_IDENTIFIER = com.mars.codexpad.ui-tests;
 					PRODUCT_NAME = CodexPadUITests;
 					SDKROOT = iphoneos;
 					SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

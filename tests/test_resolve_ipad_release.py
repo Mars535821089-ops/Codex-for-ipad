@@ -20,7 +20,7 @@ class ResolveIPadReleaseTests(unittest.TestCase):
         ipa = export_root / "Codex for ipad.ipa"
         info = {
             "CFBundleDisplayName": "Codex for ipad",
-            "CFBundleIdentifier": "dev.codexforipad.app",
+            "CFBundleIdentifier": "com.mars.codexpad",
             "CFBundleShortVersionString": "1.2.3",
             "CFBundleVersion": "42",
             "CFBundleExecutable": "Codex for ipad",
@@ -47,7 +47,7 @@ class ResolveIPadReleaseTests(unittest.TestCase):
                     },
                     "product": {
                         "architecture": "arm64",
-                        "bundleIdentifier": "dev.codexforipad.app",
+                        "bundleIdentifier": "com.mars.codexpad",
                         "build": "42",
                         "deviceFamily": "iPad",
                         "name": "Codex for ipad",

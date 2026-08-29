@@ -32,7 +32,7 @@ esac
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEVICE_NAME="$1"
-BUNDLE_ID="dev.codexforipad.app"
+BUNDLE_ID="com.mars.codexpad"
 ARTIFACTS="$PROJECT_ROOT/artifacts"
 SCREENSHOT_VALIDATOR="$PROJECT_ROOT/scripts/verify_device_screenshot.swift"
 LATEST_PROBE="$PROJECT_ROOT/.planning/codex-ipad-release/latest-official-probe-20260819.json"

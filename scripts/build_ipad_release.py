@@ -31,7 +31,7 @@ from scripts.release_identity import ReleaseIdentity
 
 
 PRODUCT_NAME = "Codex for ipad"
-BUNDLE_IDENTIFIER = "dev.codexforipad.app"
+BUNDLE_IDENTIFIER = "com.mars.codexpad"
 SCHEME = "CodexPad"
 MANIFEST_SCHEMA_VERSION = 1
 TEAM_ID_PATTERN = re.compile(r"^[A-Z0-9]{10}$")

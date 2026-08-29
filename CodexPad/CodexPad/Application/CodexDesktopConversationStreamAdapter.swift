@@ -366,52 +366,6 @@ public enum CodexDesktopConversationStreamAdapter {
         return nil
     }
 
-    private static func latestUserMessageHasUnmappedAttachments(
-        body: String?
-    ) -> Bool {
-        guard let body,
-              let data = body.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data)
-                as? [String: Any]
-        else {
-            return false
-        }
-
-        let message: [String: Any]?
-        if let partialQuery = object["partial_query"] as? [String: Any],
-           isUserMessage(partialQuery),
-           attachmentObjects(in: partialQuery).isEmpty == false
-        {
-            message = partialQuery
-        } else {
-            message = (object["messages"] as? [[String: Any]])?
-                .reversed()
-                .first(where: isUserMessage)
-        }
-        guard let message else { return false }
-
-        let attachments = attachmentObjects(in: message)
-        guard !attachments.isEmpty else { return false }
-        let imagePointers = imageAssetPointers(in: message)
-        return attachments.contains { attachment in
-            let identifiers = [
-                attachment["id"] as? String,
-                attachment["file_id"] as? String,
-                attachment["library_file_id"] as? String,
-            ].compactMap { value in
-                value?.isEmpty == false ? value : nil
-            }
-            guard !identifiers.isEmpty else { return true }
-            return !identifiers.contains { identifier in
-                imagePointers.contains { pointer in
-                    pointer == identifier
-                        || pointer.hasSuffix("://" + identifier)
-                        || pointer.hasSuffix("/" + identifier)
-                }
-            }
-        }
-    }
-
     private static func attachmentObjects(
         in message: [String: Any]
     ) -> [[String: Any]] {

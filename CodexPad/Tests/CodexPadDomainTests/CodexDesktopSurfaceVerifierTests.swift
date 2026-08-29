@@ -306,7 +306,7 @@ private struct ReleasedInstallBundleFixture {
             withIntermediateDirectories: true
         )
         let info: [String: Any] = [
-            "CFBundleIdentifier": "dev.codexforipad.app",
+            "CFBundleIdentifier": "com.mars.codexpad",
             "CFBundlePackageType": "APPL",
             "CFBundleShortVersionString": "26.803.41515",
             "CFBundleVersion": "6321",
