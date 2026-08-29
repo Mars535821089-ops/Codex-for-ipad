@@ -33,6 +33,10 @@ jobs:
             tests/test_model_catalog_generation.py \
             tests/test_ipad_execution_contract.py \
             tests/test_physical_acceptance_gate.py
+      - name: Configure isolated Git identity for repository tests
+        run: |
+          git config --global user.name "Codex CI"
+          git config --global user.email "codex-ci@example.invalid"
       - name: Rust core tests
         # Git worktree tests create and remove repositories; serial execution
         # avoids host-specific races between independent temporary checkouts.
